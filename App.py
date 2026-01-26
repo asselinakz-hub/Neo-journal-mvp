@@ -158,10 +158,14 @@ def login_screen():
     with c2:
         st.info("Совет: используй 1) короткий ID, 2) сильный пароль. Без пароля восстановить нельзя.")
 
-def save_button():
-    if st.button("💾 Сохранить", use_container_width=True):
+def save_button(scope: str):
+    if st.button(
+        "💾 Сохранить",
+        use_container_width=True,
+        key=f"save_{scope}"
+    ):
         try:
-            save_vault(st.session_state.user_id, st.session_state.passphrase, st.session_state.data)
+            save_vault(st.session_state.user_data)
             st.success("Сохранено ✅")
         except Exception as e:
             st.error(f"Не удалось сохранить: {e}")
