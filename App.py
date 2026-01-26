@@ -275,14 +275,14 @@ with tabs[0]:
         value=data["foundation"].get("about_me",""),
         height=120
     )
-    save_button()
+    save_button("base")
     domain_chat("0", "Моя основа")
 
 with tabs[1]:
     st.subheader("Деньги / Реализация")
     data["money"]["goal"] = st.text_input("Моя цель", value=data["money"].get("goal",""), key="goal_money")
     tasks_editor("money")
-    save_button()
+    save_button("money")
     domain_chat("money", "Деньги / Реализация")
 
 with tabs[2]:
@@ -299,7 +299,7 @@ with tabs[2]:
 
     data["health"]["goal"] = st.text_input("Цель по здоровью", value=data["health"].get("goal",""), key="goal_health")
     tasks_editor("health")
-    save_button()
+    save_button("health")
     domain_chat("health", "Здоровье")
 
 with tabs[3]:
@@ -307,7 +307,7 @@ with tabs[3]:
     data["relationships"]["with_whom"] = st.text_input("С кем отношения/про кого", value=data["relationships"].get("with_whom",""))
     data["relationships"]["goal"] = st.text_input("Цель в отношениях", value=data["relationships"].get("goal",""), key="goal_rel")
     tasks_editor("relationships")
-    save_button()
+    save_button("relations")
     domain_chat("rel", "Отношения")
 
 with tabs[4]:
