@@ -82,14 +82,14 @@ def _clean_tokens(s: str) -> List[str]:
     return parts
 
 def normalize_potentials_text(raw: str) -> str:
-    """
-    Accepts:
-    - "1. Аметист 2. Гранат 3. Цитрин ..."
-    - "Аметист, Гранат, Цитрин, ..."
-    - "Аметист | Гранат | Цитрин ..."
-    - Any messy text
-    Returns 3x3 formatted string for AI.
-    """
+    
+    "Accepts:
+    "- "1. Аметист 2. Гранат 3. Цитрин ..."
+    "- "Аметист, Гранат, Цитрин, ..."
+    "- "Аметист | Гранат | Цитрин ..."
+    "- Any messy text"
+    "Returns 3x3 formatted string for AI."
+    
     tokens = _clean_tokens(raw)
 
     # If user pasted already 9 known names in any order — keep that order.
