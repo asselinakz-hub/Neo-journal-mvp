@@ -584,7 +584,7 @@ def build_spch_report_system_prompt() -> str:
     )
 
 def ai_generate_master_report_spch(
-    potentials_raw=f["potentials_table"],
+    potentials_raw=profile.get("foundation", {}).get("potentials_table", ""),
     name=f.get("name","Клиент"),
     point_a=profile["realization"].get("point_a",""),
     point_b=profile["realization"].get("point_b",""),
@@ -841,7 +841,18 @@ def foundation_tab(profile: dict):
         except Exception as e:
             st.error(f"Ошибка генерации: {e}")
 
-    if profile["library"].get("extended_report"):
+    foundation = profile.get("foundation", {}) or {}
+    real = profile.get("realization", {}) or {}
+
+    report = ai_generate_master_report_spch(
+        potentials_raw=foundation.get("potentials_table", ""),
+        name=foundation.get("name", "Клиент"),
+        point_a=real.get("point_a", ""),
+        point_b=real.get("point_b", ""),
+        model=model,
+    )
+    
+     if profile["library"].get("extended_report"):
         st.markdown("### Твой расширенный отчёт")
         st.markdown(profile["library"]["extended_report"])
 
