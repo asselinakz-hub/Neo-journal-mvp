@@ -1,5 +1,3 @@
-st.write("RUN", st.session_state.get("_run_counter", 0))
-st.session_state["_run_counter"] = st.session_state.get("_run_counter", 0) + 1
 import os
 import json
 import hashlib
@@ -873,39 +871,50 @@ def end_card():
     st.markdown("</div>", unsafe_allow_html=True)
 
 def foundation_tab(profile: dict):
+    # гарантируем структуру
     profile.setdefault("foundation", {})
+    profile.setdefault("realization", {})
+    profile.setdefault("library", {})
+    profile["library"].setdefault("extended_report_md", "")
+
     f = profile["foundation"]
+    r = profile["realization"]
+    lib = profile["library"]
 
     st.divider()
-    block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я сама приведу к формату 3×3.")
+    block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я приведу к формату 3×3.")
 
-    # keys
-    name_key = "foundation_name"
-    pot_key  = "foundation_potentials"
+    # keys (важно: стабильные ключи)
+    name_key = "pp_name"
+    pot_key  = "pp_potentials_raw"
+    show_key = "pp_show_preview"
 
-    # set defaults once
+    # init session_state 1 раз
     if name_key not in st.session_state:
         st.session_state[name_key] = f.get("name", "")
     if pot_key not in st.session_state:
         st.session_state[pot_key] = f.get("potentials_table", "")
+    if show_key not in st.session_state:
+        st.session_state[show_key] = False
 
+    # ---------- FORM: ввод + сохранение (не будет дергать rerun на каждую букву) ----------
     with st.form("foundation_form", clear_on_submit=False):
         c1, c2 = st.columns([2, 1])
         with c1:
             st.text_input("Имя (как обращаться)", key=name_key)
         with c2:
-            submitted = st.form_submit_button("💾 Сохранить основу", use_container_width=True)
+            save_clicked = st.form_submit_button("💾 Сохранить основу", use_container_width=True)
 
         st.text_area(
             "Потенциалы (любой формат: «Аметист, Гранат…» или «1. Аметист 2. Гранат…»)",
             key=pot_key,
-            height=160
+            height=180
         )
 
-        show_preview = st.checkbox("Показать авто-формат 3×3", value=False)
+        st.checkbox("Показать авто-формат 3×3", key=show_key)
 
-    # save only on submit
-    if submitted:
+    # сохраняем ТОЛЬКО по кнопке
+    if save_clicked:
         f["name"] = (st.session_state.get(name_key) or "").strip()
         f["potentials_table"] = (st.session_state.get(pot_key) or "").strip()
         try:
@@ -914,10 +923,60 @@ def foundation_tab(profile: dict):
         except Exception as e:
             st.error(f"Ошибка сохранения: {e}")
 
-    # preview only if asked
-    if show_preview and (st.session_state.get(pot_key) or "").strip():
+    # preview — только если чекбокс включен
+    if st.session_state.get(show_key) and (st.session_state.get(pot_key) or "").strip():
         st.caption("Как это будет читаться системой (авто-формат 3×3):")
         st.code(normalize_potentials_text(st.session_state[pot_key]))
+
+    st.divider()
+
+    # ---------- ГЕНЕРАЦИЯ РАСШИРЕННОГО ОТЧЕТА ----------
+    st.subheader("Расширенный отчёт (ИИ)")
+
+    has_ai = bool(get_openai_client())
+    model = st.selectbox(
+        "Модель ИИ для отчёта",
+        options=["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"],
+        index=0,
+        disabled=not has_ai
+    )
+
+    if not has_ai:
+        st.warning("OpenAI не настроен (нет ключа) — генерация отчёта недоступна.")
+        return
+
+    gen = st.button("🧠 Сгенерировать расширенный отчёт", use_container_width=True)
+
+    if gen:
+        try:
+            # берем из профиля (а не из session_state), чтобы было стабильно
+            potentials_raw = (f.get("potentials_table") or "").strip()
+            name = (f.get("name") or "Клиент").strip()
+            point_a = (r.get("point_a") or "").strip()
+            point_b = (r.get("point_b") or "").strip()
+
+            if not potentials_raw:
+                st.error("Сначала заполни потенциалы и нажми «Сохранить основу».")
+            else:
+                text = ai_generate_master_report_spch(
+                    potentials_raw=potentials_raw,
+                    name=name,
+                    point_a=point_a,
+                    point_b=point_b,
+                    model=model,
+                )
+                lib["extended_report_md"] = text
+                save_profile(profile)
+                st.success("Готово ✅")
+
+        except Exception as e:
+            st.error(f"Ошибка генерации: {e}")
+
+    # показ отчета
+    if (lib.get("extended_report_md") or "").strip():
+        st.markdown("### Твой расширенный отчёт")
+        st.markdown(lib["extended_report_md"])
+
 def ensure_week_initialized(profile: dict):
     r = profile["realization"]
     today = date.today()
