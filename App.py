@@ -1,10 +1,10 @@
 import os
 import json
-import time
 import hashlib
 import secrets
+import re
 from datetime import datetime, date
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 from supabase import create_client
@@ -37,7 +37,6 @@ sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Security helpers (stdlib PBKDF2)
 # =========================
 def _pbkdf2_hash(password: str, salt: str) -> str:
-    # 200k iterations is fine for MVP
     dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
     return dk.hex()
 
@@ -51,10 +50,69 @@ def verify_password(password: str, salt: str, pw_hash: str) -> bool:
 
 
 # =========================
+# Potentials normalization (accept ANY input)
+# =========================
+DEFAULT_NAMES = [
+    "Аметист","Гранат","Цитрин",
+    "Сапфир","Гелиодор","Изумруд",
+    "Янтарь","Шунгит","Рубин"
+]
+
+def _clean_tokens(s: str) -> List[str]:
+    s = (s or "").strip()
+    if not s:
+        return []
+
+    # Replace separators with commas
+    s = s.replace("|", ",").replace("—", "-").replace("–", "-")
+    # Remove common words
+    s = re.sub(r"\b(ряд|row|процен(т|ты)|%|место|позиция|потенциал(ы)?)\b", " ", s, flags=re.I)
+    # Remove numbering like "1." "2)" "3:" etc
+    s = re.sub(r"(?<!\d)(\d{1,2})\s*[\.\)\:\-]", " ", s)
+    s = re.sub(r"[\n\r]+", ",", s)
+    # Split by comma or semicolon
+    parts = re.split(r"[,\;]+", s)
+    parts = [p.strip() for p in parts if p.strip()]
+    return parts
+
+def normalize_potentials_text(raw: str) -> str:
+    """
+    Accepts:
+    - "1. Аметист 2. Гранат 3. Цитрин ..."
+    - "Аметист, Гранат, Цитрин, ..."
+    - "Аметист | Гранат | Цитрин ..."
+    - Any messy text
+    Returns 3x3 formatted string for AI.
+    """
+    tokens = _clean_tokens(raw)
+
+    # If user pasted already 9 known names in any order — keep that order.
+    # If less than 9, we fill with defaults at the end (for robustness).
+    if len(tokens) >= 9:
+        tokens = tokens[:9]
+    else:
+        # try to preserve what user wrote + fill remaining with defaults (no duplicates if possible)
+        existing = set([t.lower() for t in tokens])
+        for name in DEFAULT_NAMES:
+            if name.lower() not in existing and len(tokens) < 9:
+                tokens.append(name)
+
+    # Build 3x3
+    a = tokens[0:3]
+    b = tokens[3:6]
+    c = tokens[6:9]
+
+    return (
+        f"1 ряд: 1. {a[0]} | 2. {a[1]} | 3. {a[2]}\n"
+        f"2 ряд: 4. {b[0]} | 5. {b[1]} | 6. {b[2]}\n"
+        f"3 ряд: 7. {c[0]} | 8. {c[1]} | 9. {c[2]}"
+    )
+
+
+# =========================
 # Default data (MVP)
 # =========================
 def default_profile() -> Dict[str, Any]:
-    # 4 блока действий (вариант B)
     action_blocks = [
         {"key": "structure", "title": "Структура дня", "items": []},
         {"key": "focus", "title": "Фокус недели", "items": []},
@@ -70,19 +128,18 @@ def default_profile() -> Dict[str, Any]:
         },
         "foundation": {
             "name": "",
-            "potentials_table": "",   # сюда вставим матрицу
+            "potentials_table": "",   # raw user input
             "notes": "",
         },
         "realization": {
             "point_a": "",
             "point_b": "",
-            "weekly_focus": "",       # выбранный фокус (строка)
-            "focus_explainer": "",    # краткое объяснение фокуса (можно ИИ)
+            "weekly_focus": "",
+            "focus_explainer": "",
             "action_blocks": action_blocks,
-            "week_start": "",         # дата понедельника текущей недели
+            "week_start": "",
         },
         "today": {
-            # храним отметки по датам: {"YYYY-MM-DD": {"done": {task_id: true}, "notes": "..."}}
             "by_date": {}
         }
     }
@@ -91,7 +148,7 @@ def default_profile() -> Dict[str, Any]:
 # =========================
 # DB helpers
 # =========================
-def db_get_user_by_email(email: str) -> dict | None:
+def db_get_user_by_email(email: str) -> Optional[dict]:
     r = sb.table(USERS_TABLE).select("*").eq("email", email.lower().strip()).limit(1).execute()
     rows = r.data or []
     return rows[0] if rows else None
@@ -105,7 +162,7 @@ def db_create_user(email: str, password: str) -> dict:
     }).execute()
     return (r.data or [None])[0]
 
-def db_get_profile(user_id: str) -> dict | None:
+def db_get_profile(user_id: str) -> Optional[dict]:
     r = sb.table(PROFILES_TABLE).select("*").eq("user_id", user_id).limit(1).execute()
     rows = r.data or []
     return rows[0] if rows else None
@@ -120,7 +177,7 @@ def db_upsert_profile(user_id: str, data: dict) -> None:
 
 
 # =========================
-# UI theme (Cyrillic fonts + brand look)
+# UI theme (LIGHT)
 # =========================
 def inject_css():
     st.markdown(
@@ -129,15 +186,16 @@ def inject_css():
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700&family=Playfair+Display:wght@500;600;700&display=swap');
 
 :root{
-  --pp-bg: #0f0b14;
-  --pp-card: rgba(255,255,255,0.06);
-  --pp-card2: rgba(255,255,255,0.08);
-  --pp-border: rgba(255,255,255,0.10);
-  --pp-text: rgba(255,255,255,0.92);
-  --pp-muted: rgba(255,255,255,0.65);
+  --pp-bg: #ffffff;
+  --pp-card: #ffffff;
+  --pp-card2: #faf7fc;
+  --pp-border: rgba(17, 24, 39, 0.10);
+  --pp-text: #111827;
+  --pp-muted: rgba(17, 24, 39, 0.62);
   --pp-violet: #3b1a5a;
   --pp-rose: #c18aa4;
   --pp-amber: #ff9f4a;
+  --pp-shadow: 0 10px 24px rgba(17,24,39,0.08);
 }
 
 html, body, [class*="css"]  {
@@ -145,23 +203,24 @@ html, body, [class*="css"]  {
 }
 
 .main {
-  background: radial-gradient(1200px 600px at 20% 0%, rgba(59,26,90,0.35), transparent 60%),
-              radial-gradient(900px 500px at 85% 10%, rgba(255,159,74,0.12), transparent 60%),
+  background: radial-gradient(1200px 600px at 20% 0%, rgba(59,26,90,0.06), transparent 60%),
+              radial-gradient(900px 500px at 85% 10%, rgba(255,159,74,0.05), transparent 60%),
               var(--pp-bg);
 }
 
 h1, h2, h3 {
   font-family: "Playfair Display", serif !important;
   letter-spacing: 0.2px;
+  color: var(--pp-text);
 }
 
 .pp-card{
   background: var(--pp-card);
   border: 1px solid var(--pp-border);
-  border-radius: 18px;
+  border-radius: 16px;
   padding: 16px 16px 14px 16px;
-  margin: 8px 0;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+  margin: 10px 0;
+  box-shadow: var(--pp-shadow);
 }
 
 .pp-chip{
@@ -169,15 +228,15 @@ h1, h2, h3 {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--pp-border);
-  background: rgba(255,255,255,0.05);
-  color: var(--pp-muted);
+  background: rgba(59,26,90,0.05);
+  color: var(--pp-violet);
   font-size: 12px;
   margin-right: 6px;
 }
 
 .pp-title{
   color: var(--pp-text);
-  font-weight: 700;
+  font-weight: 800;
   font-size: 16px;
   margin-bottom: 6px;
 }
@@ -189,11 +248,11 @@ h1, h2, h3 {
 }
 
 .pp-accent{
-  color: var(--pp-amber);
-  font-weight: 700;
+  color: var(--pp-violet);
+  font-weight: 800;
 }
 
-hr { border-color: rgba(255,255,255,0.08) !important; }
+hr { border-color: rgba(17,24,39,0.10) !important; }
 </style>
         """,
         unsafe_allow_html=True,
@@ -208,14 +267,35 @@ def get_openai_client():
         return None
     return OpenAI(api_key=OPENAI_API_KEY)
 
-def ai_generate_focus(potentials: str, point_a: str, point_b: str, model: str = "gpt-4o-mini") -> dict:
+def _extract_json_from_text(txt: str) -> Optional[dict]:
+    txt = (txt or "").strip()
+    if not txt:
+        return None
+    # Try direct JSON
+    try:
+        return json.loads(txt)
+    except Exception:
+        pass
+    # Try to find JSON object inside text
+    m = re.search(r"\{[\s\S]*\}", txt)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+def ai_generate_focus(potentials_raw: str, point_a: str, point_b: str, model: str = "gpt-4o-mini") -> dict:
     client = get_openai_client()
     if not client:
         raise RuntimeError("OpenAI not configured")
+
+    potentials_norm = normalize_potentials_text(potentials_raw)
+
     system = (
         "Ты — навигатор по реализации человека через Personal Potentials.\n"
         "Дай практичный план без давления. Не терапия. Не диагноз.\n"
-        "Выводи только JSON.\n"
+        "Ответ СТРОГО в JSON.\n"
         "JSON schema:\n"
         "{"
         "  \"weekly_focus\": \"...\","
@@ -226,10 +306,11 @@ def ai_generate_focus(potentials: str, point_a: str, point_b: str, model: str = 
         "    {\"key\":\"growth\",\"items\":[...]},"
         "    {\"key\":\"energy\",\"items\":[...]}"
         "  ]"
-        "}"
+        "}\n"
+        "Требования: 3–5 задач на блок; задачи маленькие, измеримые; freq только daily/weekly; minutes 10–45."
     )
-    user = f"""Потенциалы (матрица/таблица):
-{potentials}
+    user = f"""Потенциалы (нормализовано 3×3):
+{potentials_norm}
 
 Точка А (сейчас):
 {point_a}
@@ -237,20 +318,30 @@ def ai_generate_focus(potentials: str, point_a: str, point_b: str, model: str = 
 Точка Б (как хочу):
 {point_b}
 
-Сгенерируй фокус недели и 3–5 задач на блок.
-Задачи должны быть маленькие, измеримые, выполнимые. Частота: daily или weekly.
-minutes 10–45.
+Сгенерируй фокус недели и план.
 """
+
     resp = client.chat.completions.create(
         model=model,
-        messages=[
-            {"role":"system","content":system},
-            {"role":"user","content":user}
-        ],
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
         temperature=0.5,
     )
-    txt = resp.choices[0].message.content.strip()
-    return json.loads(txt)
+
+    txt = (resp.choices[0].message.content or "").strip()
+    data = _extract_json_from_text(txt)
+    if not data:
+        # return a safe fallback so UI doesn't crash
+        return {
+            "weekly_focus": "Собрать фокус и ритм",
+            "focus_explainer": "ИИ вернул не-JSON. Я сохранила безопасный фокус. Проверь ключ OpenAI или попробуй ещё раз.",
+            "action_blocks": [
+                {"key":"structure","items":[{"id":secrets.token_hex(6),"title":"15 минут план дня (1–3 приоритета)","minutes":15,"freq":"daily"}]},
+                {"key":"focus","items":[{"id":secrets.token_hex(6),"title":"1 шаг к цели (самый маленький)","minutes":20,"freq":"daily"}]},
+                {"key":"growth","items":[{"id":secrets.token_hex(6),"title":"10 минут обучение/чтение по теме","minutes":10,"freq":"daily"}]},
+                {"key":"energy","items":[{"id":secrets.token_hex(6),"title":"Прогулка/вода/сон — 1 улучшение","minutes":15,"freq":"daily"}]},
+            ]
+        }
+    return data
 
 
 # =========================
@@ -282,51 +373,50 @@ def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
 
-    with st.container():
-        st.markdown('<div class="pp-card">', unsafe_allow_html=True)
-        tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
+    st.markdown('<div class="pp-card">', unsafe_allow_html=True)
+    tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
-        with tab_login:
-            email = st.text_input("Email", key="login_email")
-            pw = st.text_input("Пароль", type="password", key="login_pw")
-            if st.button("Войти", use_container_width=True):
-                u = db_get_user_by_email(email)
-                if not u:
-                    st.error("Пользователь не найден.")
-                else:
-                    if verify_password(pw, u["salt"], u["pw_hash"]):
-                        st.session_state.authed = True
-                        st.session_state.user = u
-                        prof = db_get_profile(u["id"])
-                        if not prof:
-                            data = default_profile()
-                            db_upsert_profile(u["id"], data)
-                            st.session_state.profile = data
-                        else:
-                            st.session_state.profile = prof["data"]
-                        st.rerun()
+    with tab_login:
+        email = st.text_input("Email", key="login_email")
+        pw = st.text_input("Пароль", type="password", key="login_pw")
+        if st.button("Войти", use_container_width=True):
+            u = db_get_user_by_email(email)
+            if not u:
+                st.error("Пользователь не найден.")
+            else:
+                if verify_password(pw, u["salt"], u["pw_hash"]):
+                    st.session_state.authed = True
+                    st.session_state.user = u
+                    prof = db_get_profile(u["id"])
+                    if not prof:
+                        data = default_profile()
+                        db_upsert_profile(u["id"], data)
+                        st.session_state.profile = data
                     else:
-                        st.error("Неверный пароль.")
-
-        with tab_signup:
-            email2 = st.text_input("Email (для доступа)", key="su_email")
-            pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
-            pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
-            if st.button("Создать доступ", use_container_width=True):
-                if not email2 or "@" not in email2:
-                    st.error("Введи корректный email.")
-                elif len(pw2) < 8:
-                    st.error("Пароль минимум 8 символов.")
-                elif pw2 != pw3:
-                    st.error("Пароли не совпадают.")
-                elif db_get_user_by_email(email2):
-                    st.error("Такой email уже зарегистрирован.")
+                        st.session_state.profile = prof["data"]
+                    st.rerun()
                 else:
-                    u = db_create_user(email2, pw2)
-                    data = default_profile()
-                    db_upsert_profile(u["id"], data)
-                    st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
-        st.markdown("</div>", unsafe_allow_html=True)
+                    st.error("Неверный пароль.")
+
+    with tab_signup:
+        email2 = st.text_input("Email (для доступа)", key="su_email")
+        pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
+        pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
+        if st.button("Создать доступ", use_container_width=True):
+            if not email2 or "@" not in email2:
+                st.error("Введи корректный email.")
+            elif len(pw2) < 8:
+                st.error("Пароль минимум 8 символов.")
+            elif pw2 != pw3:
+                st.error("Пароли не совпадают.")
+            elif db_get_user_by_email(email2):
+                st.error("Такой email уже зарегистрирован.")
+            else:
+                u = db_create_user(email2, pw2)
+                data = default_profile()
+                db_upsert_profile(u["id"], data)
+                st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # =========================
@@ -351,10 +441,11 @@ def block_card(title: str, subtitle: str = ""):
 def end_card():
     st.markdown("</div>", unsafe_allow_html=True)
 
+
 def foundation_tab(profile: dict):
     f = profile["foundation"]
 
-    block_card("0) Основа", "Сюда попадают потенциалы. Это «линза», через которую ИИ и платформа дают навигацию.")
+    block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я сама приведу к формату 3×3.")
     c1, c2 = st.columns([2, 1])
     with c1:
         f["name"] = st.text_input("Имя (как обращаться)", value=f.get("name",""))
@@ -364,38 +455,44 @@ def foundation_tab(profile: dict):
             st.success("Сохранено ✅")
 
     f["potentials_table"] = st.text_area(
-        "Матрица/таблица потенциалов (вставь сюда текст)",
+        "Потенциалы (любой формат: «Аметист, Гранат…» или «1. Аметист 2. Гранат…»)",
         value=f.get("potentials_table",""),
-        height=180
+        height=140
     )
+
+    # preview normalized
+    if f.get("potentials_table","").strip():
+        st.caption("Как это будет читаться системой (авто-формат):")
+        st.code(normalize_potentials_text(f["potentials_table"]), language="")
+
     f["notes"] = st.text_area(
         "Короткие заметки (необязательно)",
         value=f.get("notes",""),
-        height=120
+        height=100
     )
     end_card()
+
 
 def ensure_week_initialized(profile: dict):
     r = profile["realization"]
     today = date.today()
     week_start = monday_of_week(today).isoformat()
-
     if r.get("week_start") != week_start:
         r["week_start"] = week_start
-        # при смене недели не стираем блоки, но можно сбросить weekly_done, если появится позже
         save_profile()
+
 
 def realization_tab(profile: dict):
     ensure_week_initialized(profile)
     r = profile["realization"]
     f = profile["foundation"]
 
-    block_card("1) Реализация", "Точка А → Точка Б → выбираем фокус недели → собираем 4 блока действий.")
+    block_card("1) Реализация", "Точка А → Точка Б → фокус недели → 4 блока действий.")
     c1, c2 = st.columns(2)
     with c1:
-        r["point_a"] = st.text_area("Точка А (сейчас)", value=r.get("point_a",""), height=140)
+        r["point_a"] = st.text_area("Точка А (сейчас)", value=r.get("point_a",""), height=130)
     with c2:
-        r["point_b"] = st.text_area("Точка Б (как хочу)", value=r.get("point_b",""), height=140)
+        r["point_b"] = st.text_area("Точка Б (как хочу)", value=r.get("point_b",""), height=130)
 
     colA, colB, colC = st.columns([1,1,1.2])
     with colA:
@@ -414,21 +511,19 @@ def realization_tab(profile: dict):
                     st.error("Заполни Точку А и Точку Б.")
                 else:
                     out = ai_generate_focus(
-                        potentials=f["potentials_table"],
+                        potentials_raw=f["potentials_table"],
                         point_a=r["point_a"],
                         point_b=r["point_b"],
                         model=model
                     )
-                    r["weekly_focus"] = out.get("weekly_focus","").strip()
-                    r["focus_explainer"] = out.get("focus_explainer","").strip()
+                    r["weekly_focus"] = (out.get("weekly_focus","") or "").strip()
+                    r["focus_explainer"] = (out.get("focus_explainer","") or "").strip()
 
-                    # обновляем items в блоках по key
                     blocks_by_key = {b["key"]: b for b in r["action_blocks"]}
                     for b in out.get("action_blocks", []):
                         k = b.get("key")
                         if k in blocks_by_key:
                             items = b.get("items", []) or []
-                            # нормализуем + проставим id если нет
                             norm = []
                             for it in items:
                                 tid = it.get("id") or secrets.token_hex(6)
@@ -453,10 +548,8 @@ def realization_tab(profile: dict):
     st.write("")
     st.markdown("### 4 блока действий (редактируемые)")
     for b in r["action_blocks"]:
-        block_card(b["title"], "Добавь 3–7 маленьких действий. Частота daily/weekly. 10–45 минут.")
+        block_card(b["title"], "Добавь 3–7 маленьких действий. Частота: daily/weekly. 10–45 минут.")
         items = b.get("items", [])
-        # редактор списка задач
-        # (пока упрощённый — следующим шагом сделаю «дорогие карточки» с кнопками)
         edited = st.data_editor(
             items,
             num_rows="dynamic",
@@ -469,7 +562,7 @@ def realization_tab(profile: dict):
             },
             key=f"ed_{b['key']}"
         )
-        # ensure ids
+
         norm = []
         for it in edited:
             tid = it.get("id") or secrets.token_hex(6)
@@ -486,17 +579,17 @@ def realization_tab(profile: dict):
             st.success("Сохранено ✅")
         end_card()
 
+
 def today_tab(profile: dict):
     ensure_week_initialized(profile)
     r = profile["realization"]
     t = profile["today"]
 
-    block_card("2) Сегодня", "Отмечай реальный прогресс: галочки, заметки, темп. Без давления.")
+    block_card("2) Сегодня", "Галочки + заметки. Прогресс без давления.")
     chosen = st.date_input("Дата", value=date.today(), key="today_date")
     dkey = chosen.isoformat()
     day = t["by_date"].get(dkey) or {"done": {}, "notes": ""}
 
-    # собрать список daily задач
     tasks = []
     for b in r["action_blocks"]:
         for it in b.get("items", []):
@@ -526,7 +619,7 @@ def today_tab(profile: dict):
         day["done"] = done_map
 
     st.write("")
-    day["notes"] = st.text_area("Инсайты / комментарии за день", value=day.get("notes",""), height=140)
+    day["notes"] = st.text_area("Инсайты / комментарии за день", value=day.get("notes",""), height=120)
 
     c1, c2 = st.columns([1,1])
     with c1:
@@ -543,8 +636,9 @@ def today_tab(profile: dict):
 
     end_card()
 
+
 def settings_tab():
-    block_card("Настройки", "Профиль, выход, техничка.")
+    block_card("Настройки", "Профиль и выход.")
     st.code(f"Email: {st.session_state.user.get('email')}")
     if st.button("🚪 Выйти", use_container_width=True):
         st.session_state.authed = False
