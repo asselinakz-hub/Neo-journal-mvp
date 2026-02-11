@@ -140,7 +140,7 @@ def default_profile() -> Dict[str, Any]:
             "week_start": "",
         },
         "today": {
-            "by_date": {}
+            "by_date": {},
         }
         "library": {
             "potentials_guide": "",
