@@ -83,7 +83,7 @@ def _clean_tokens(s: str) -> List[str]:
 
 def normalize_potentials_text(raw: str) -> str:
     
-    "Accepts:
+    "Accepts:"
     "- "1. Аметист 2. Гранат 3. Цитрин ..."
     "- "Аметист, Гранат, Цитрин, ..."
     "- "Аметист | Гранат | Цитрин ..."
