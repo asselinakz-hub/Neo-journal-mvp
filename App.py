@@ -875,45 +875,42 @@ def realization_tab(profile: dict):
     st.write("")
     st.markdown("### 4 блока действий (редактируемые)")
     for b in r["action_blocks"]:
-    block_card(b["title"], "Добавь 3–7 маленьких действий. Частота: daily/weekly. 10–45 минут.")
-    items = b.get("items", [])
+        block_card(b["title"], "Добавь 3–7 маленьких действий. Частота: daily/weekly. 10–45 минут.")
+        items = b.get("items", [])
 
-    editor_key = f"ed_{b['key']}"
+        editor_key = f"ed_{b['key']}"
 
-    edited = st.data_editor(
-        items,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "id": st.column_config.TextColumn("id", disabled=True),
-            "title": st.column_config.TextColumn("Действие"),
-            "minutes": st.column_config.NumberColumn("мин", min_value=10, max_value=45, step=5),
-            "freq": st.column_config.SelectboxColumn("частота", options=["daily", "weekly"]),
-        },
-        key=editor_key
-    )
+        edited = st.data_editor(
+            items,
+            num_rows="dynamic",
+            use_container_width=True,
+            column_config={
+                "id": st.column_config.TextColumn("id", disabled=True),
+                "title": st.column_config.TextColumn("Действие"),
+                "minutes": st.column_config.NumberColumn("мин", min_value=10, max_value=45, step=5),
+                "freq": st.column_config.SelectboxColumn("частота", options=["daily", "weekly"]),
+            },
+            key=editor_key
+        )
 
     # ВАЖНО: НЕ пишем обратно в b["items"] на каждом run.
     # Готовим нормализованные данные только как "кандидата на сохранение".
-    pending = []
-    for it in edited or []:
-        tid = it.get("id") or secrets.token_hex(6)
-        pending.append({
-            "id": tid,
-            "title": (it.get("title") or "").strip(),
-            "minutes": int(it.get("minutes") or 15),
-            "freq": (it.get("freq") or "daily").strip(),
-        })
+        pending = []
+        for it in edited or []:
+            tid = it.get("id") or secrets.token_hex(6)
+            pending.append({
+                "id": tid,
+                "title": (it.get("title") or "").strip(),
+                "minutes": int(it.get("minutes") or 15),
+                "freq": (it.get("freq") or "daily").strip(),
+            })
 
-    if st.button("💾 Сохранить блок", use_container_width=True, key=f"save_block_{b['key']}"):
-        b["items"] = pending
-        save_profile_to_db(profile)
-        st.success("Сохранено ✅")
+        if st.button("💾 Сохранить блок", use_container_width=True, key=f"save_block_{b['key']}"):
+            b["items"] = pending
+            save_profile_to_db(profile)
+            st.success("Сохранено ✅")
 
-    end_card()
-
-    end_card()
-
+        end_card()
 
 # =========================================================
 # TAB: TODAY
