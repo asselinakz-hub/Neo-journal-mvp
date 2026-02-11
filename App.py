@@ -756,7 +756,11 @@ def today_tab(profile: dict):
             st.rerun()
 
     end_card()
-
+    
+def progress_tab(profile: dict):
+    block_card("3) Прогресс", "Скоро: недельная/месячная статистика, метрики и AI-анализ.")
+    st.info("Пока вкладка в разработке. Следующий шаг — собрать статистику из today.by_date.")
+    end_card()
 
 def settings_tab():
     block_card("Настройки", "Профиль и выход.")
