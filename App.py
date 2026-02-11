@@ -557,13 +557,6 @@ def end_card():
 def foundation_tab(profile: dict):
     f = profile["foundation"]
     st.divider()
-    st.markdown("### Библиотека")
-
-    profile["library"]["potentials_guide"] = st.text_area(
-        "Справочник по потенциалам (для внутреннего использования, можно скрыть позже)",
-        value=profile["library"].get("potentials_guide",""),
-        height=220
-    )
 
     has_ai = bool(get_openai_client())
     model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4.1-mini"], index=0, disabled=not has_ai)
@@ -617,16 +610,6 @@ def foundation_tab(profile: dict):
         height=100
     )
     
-    st.markdown("### Справочник по потенциалам (для чтения)")
-    profile["library"]["potentials_guide"] = st.text_area(
-        "Вставь сюда большой справочник (Markdown). Он будет доступен всегда.",
-        value=profile.get("library", {}).get("potentials_guide", ""),
-        height=220
-    )
-    if st.button("💾 Сохранить справочник", use_container_width=True, key="save_guide"):
-        save_profile()
-        st.success("Сохранено ✅")
-
     st.markdown("### Мастер-отчёт (ИИ)")
     has_ai = bool(get_openai_client())
     model_r = st.selectbox("Модель отчёта", ["gpt-4o-mini","gpt-4.1-mini"], index=0, disabled=not has_ai, key="model_master")
