@@ -141,7 +141,7 @@ def default_profile() -> Dict[str, Any]:
         },
         "today": {
             "by_date": {},
-        }
+        },
         "library": {
             "potentials_guide": "",
             "master_report": "",
