@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 from supabase import create_client
 
+from spch_report import generate_extended_report
+
 # OpenAI optional
 try:
     from openai import OpenAI
@@ -152,6 +154,26 @@ def default_profile() -> Dict[str, Any]:
             "weekly_target_days": 4
         },
     }
+
+def ensure_profile_schema(profile: dict) -> dict:
+    if not isinstance(profile, dict):
+        profile = default_profile()
+
+    profile.setdefault("library", {})
+    profile["library"].setdefault("potentials_guide", "")
+    profile["library"].setdefault("extended_report", "")
+    profile["library"].setdefault("extended_report_updated_at", "")
+    profile["library"].setdefault("positions", {})  # pos1..pos6 сюда
+
+    profile.setdefault("metrics", {})
+    profile["metrics"].setdefault("weekly_targets", {})
+    profile["metrics"].setdefault("monthly_targets", {})
+
+    # на всякий: если нет today/by_date
+    profile.setdefault("today", {"by_date": {}})
+    profile["today"].setdefault("by_date", {})
+
+    return profile
 
 def migrate_profile(data: dict) -> dict:
     # гарантируем новые секции, чтобы старые профили не падали
@@ -534,6 +556,36 @@ def end_card():
 
 def foundation_tab(profile: dict):
     f = profile["foundation"]
+    st.divider()
+    st.markdown("### Библиотека")
+
+    profile["library"]["potentials_guide"] = st.text_area(
+        "Справочник по потенциалам (для внутреннего использования, можно скрыть позже)",
+        value=profile["library"].get("potentials_guide",""),
+        height=220
+    )
+
+    has_ai = bool(get_openai_client())
+    model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4.1-mini"], index=0, disabled=not has_ai)
+
+    if st.button("🧠 Сгенерировать расширенный отчёт (ИИ)", use_container_width=True, disabled=not has_ai):
+        try:
+            client = get_openai_client()
+            if not client:
+                st.error("OpenAI не настроен (нет OPENAI_API_KEY).")
+            else:
+                text = generate_extended_report(client, model=model, profile=profile)
+                profile["library"]["extended_report"] = text
+                profile["library"]["extended_report_updated_at"] = datetime.utcnow().isoformat() + "Z"
+                save_profile()
+                st.success("Готово ✅")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Ошибка генерации: {e}")
+
+    if profile["library"].get("extended_report"):
+        st.markdown("### Твой расширенный отчёт")
+        st.markdown(profile["library"]["extended_report"])
 
     # --- migrate old profiles (safe) ---
     profile.setdefault("library", {"potentials_guide": "", "master_report": "", "master_report_updated_at": ""})
@@ -790,6 +842,8 @@ if not profile:
     st.session_state.profile = profile
     save_profile()
     prof = db_get_profile(st.session_state.user["id"])
+    profile = ensure_profile_schema(profile)
+    st.session_state.profile = profile
     if prof:
         st.session_state.profile = prof["data"]
         profile = st.session_state.profile
@@ -798,6 +852,7 @@ if not profile:
         db_upsert_profile(st.session_state.user["id"], data)
         st.session_state.profile = data
         profile = data
+        
 
 header_bar()
 
