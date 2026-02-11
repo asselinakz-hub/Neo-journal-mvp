@@ -585,7 +585,7 @@ def build_spch_report_system_prompt() -> str:
 
 import re
 
-DEFAULT_NAMES = ["Аметист","Гранат","Цитрин","Сапфир","Гелиодор","Изумруд","Янтарь","Шунгит","Рубин"]
+    DEFAULT_NAMES = ["Аметист","Гранат","Цитрин","Сапфир","Гелиодор","Изумруд","Янтарь","Шунгит","Рубин"]
 
 def _clean_tokens(raw: str) -> list[str]:
     s = (raw or "").strip()
