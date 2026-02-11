@@ -1,3 +1,5 @@
+st.write("RUN", st.session_state.get("_run_counter", 0))
+st.session_state["_run_counter"] = st.session_state.get("_run_counter", 0) + 1
 import os
 import json
 import hashlib
