@@ -999,7 +999,7 @@ def save_profile_to_db():
 # =========================
 # Auth screen
 # =========================
-ddef auth_screen():
+def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы.")
 
