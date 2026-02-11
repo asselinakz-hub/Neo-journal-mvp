@@ -153,6 +153,29 @@ def default_profile() -> Dict[str, Any]:
         },
     }
 
+def migrate_profile(data: dict) -> dict:
+    # гарантируем новые секции, чтобы старые профили не падали
+    data.setdefault("library", {
+        "potentials_guide": "",
+        "master_report": "",
+        "master_report_updated_at": ""
+    })
+    data.setdefault("metrics", {
+        "daily_target": 0,
+        "weekly_target": 0,
+        "baseline": "",
+        "weekly_reviews": {}
+    })
+    data.setdefault("today", {"by_date": {}})
+    data.setdefault("foundation", {"name": "", "potentials_table": "", "notes": ""})
+    data.setdefault("realization", {})
+    data["realization"].setdefault("action_blocks", [
+        {"key": "structure", "title": "Структура дня", "items": []},
+        {"key": "focus", "title": "Фокус недели", "items": []},
+        {"key": "growth", "title": "Рост и навыки", "items": []},
+        {"key": "energy", "title": "Энергия и ресурс", "items": []},
+    ])
+    return data
 
 # =========================
 # DB helpers
