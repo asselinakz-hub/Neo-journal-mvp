@@ -535,6 +535,10 @@ def end_card():
 def foundation_tab(profile: dict):
     f = profile["foundation"]
 
+    # --- migrate old profiles (safe) ---
+    profile.setdefault("library", {"potentials_guide": "", "master_report": "", "master_report_updated_at": ""})
+    profile.setdefault("metrics", {"daily_target": 0, "weekly_target": 0, "baseline": "", "weekly_reviews": {}})
+
     block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я сама приведу к формату 3×3.")
     c1, c2 = st.columns([2, 1])
     with c1:
