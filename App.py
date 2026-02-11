@@ -10,6 +10,9 @@ from datetime import datetime, date
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
+st.write("RUN#", st.session_state.get("_run_counter", 0))
+st.session_state["_run_counter"] = st.session_state.get("_run_counter", 0) + 1
+
 from supabase import create_client
 
 # Optional OpenAI
