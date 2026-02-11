@@ -583,8 +583,6 @@ def build_spch_report_system_prompt() -> str:
         "ФОРМАТ: Markdown. Структуру соблюдай строго, без лишней воды."
     )
 
-import re
-
     DEFAULT_NAMES = ["Аметист","Гранат","Цитрин","Сапфир","Гелиодор","Изумруд","Янтарь","Шунгит","Рубин"]
 
 def _clean_tokens(raw: str) -> list[str]:
@@ -858,20 +856,16 @@ def end_card():
 
 def foundation_tab(profile: dict):
     f = profile["foundation"]
-    st.divider()
-
-    # внутри foundation_tab(profile: dict)
     profile.setdefault("library", {})
     profile["library"].setdefault("extended_report", "")
     profile["library"].setdefault("extended_report_updated_at", "")
 
-    has_ai = bool(get_openai_client())
-    model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4.1-mini"], index=0, disabled=not has_ai)
+    model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4o"], index=0)
 
-    if st.button("🧠 Сгенерировать расширенный отчёт (СПЧ)", use_container_width=True, disabled=not has_ai):
+    if st.button("🧠 Сгенерировать расширенный отчёт"):
         try:
-            foundation = profile.get("foundation", {}) or {}
-            real = profile.get("realization", {}) or {}
+            foundation = profile.get("foundation", {})
+            real = profile.get("realization", {})
 
             text = ai_generate_master_report_spch(
                 potentials_raw=foundation.get("potentials_table", ""),
@@ -882,16 +876,15 @@ def foundation_tab(profile: dict):
             )
 
             profile["library"]["extended_report"] = text
-            profile["library"]["extended_report_updated_at"] = datetime.utcnow().isoformat() + "Z"
+            profile["library"]["extended_report_updated_at"] = utcnow_iso()
             save_profile()
             st.success("Готово ✅")
             st.rerun()
         except Exception as e:
             st.error(f"Ошибка генерации: {e}")
 
-    # показ отчёта
     if profile.get("library", {}).get("extended_report"):
-        st.markdown("### Твой расширенный отчёт (СПЧ)")
+        st.markdown("### Твой расширенный отчёт")
         st.markdown(profile["library"]["extended_report"])
 
 def ensure_week_initialized(profile: dict):
