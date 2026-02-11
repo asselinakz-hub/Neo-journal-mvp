@@ -610,11 +610,13 @@ def ai_generate_master_report_spch(
 # SESSION STATE INIT
 # =========================================================
 def init_state():
-    st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
     inject_css()
-    st.session_state.setdefault("authed", False)
-    st.session_state.setdefault("user", None)
-    st.session_state.setdefault("profile", None)
+    if "authed" not in st.session_state:
+        st.session_state.authed = False
+    if "user" not in st.session_state:
+        st.session_state.user = None
+    if "profile" not in st.session_state:
+        st.session_state.profile = None
 
 def save_profile_to_db(profile: dict):
     # save only when explicitly called
@@ -1001,6 +1003,15 @@ def settings_tab():
 # =========================================================
 # MAIN
 # =========================================================
+# =========================
+# Main
+# =========================
+
+st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
+
+st.write("RUN#", st.session_state.get("_run_counter", 0))
+st.session_state["_run_counter"] = st.session_state.get("_run_counter", 0) + 1
+
 init_state()
 
 if not st.session_state.authed:
