@@ -10,6 +10,10 @@ import streamlit as st
 from supabase import create_client
 
 from spch_report import generate_extended_report
+try:
+    from spch_canon import POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON
+except Exception:
+    POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = {}, {}, {}, {}
 
 # OpenAI optional
 try:
@@ -414,32 +418,269 @@ def ai_generate_focus(potentials_raw: str, point_a: str, point_b: str, model: st
         }
     return data
 
-def ai_generate_master_report(potentials_raw: str, name: str, model: str="gpt-4o-mini") -> str:
+# =========================
+# SPCH / Personal Potentials — parsing + report
+# =========================
+
+def _clean_pot_name(x: str) -> str:
+    return (x or "").strip(" \t\r\n-–—•*,:;").strip()
+
+def parse_potentials_9(raw: str) -> List[str]:
+    """
+    Достаём 9 потенциалов в порядке 1..9 из любого ввода:
+    - "1. Аметист 2. Гранат ... 9. Рубин"
+    - "Аметист, Гранат, Цитрин, ..."
+    - 3 строки по 3 значения
+    """
+    if not raw:
+        return []
+
+    s = raw.strip()
+
+    # 1) Пробуем извлечь по нумерации 1..9 (самый надёжный вариант)
+    # Ищем куски между "1." ... "2." ... "9." или концом
+    numbered = []
+    for i in range(1, 10):
+        m = re.search(rf"(?:(?:^|\n|\s){i}\s*[\.\)]\s*)(.+?)(?=(?:\n|\s)(?:{i+1}\s*[\.\)]|$))", s, flags=re.S)
+        if m:
+            val = _clean_pot_name(m.group(1))
+            if val:
+                numbered.append(val)
+
+    if len(numbered) >= 9:
+        return numbered[:9]
+
+    # 2) Иначе: режем по строкам/запятым/точкам с запятой
+    # Убираем маркеры и лишние символы
+    s2 = re.sub(r"[\u2022•]", "\n", s)
+    s2 = s2.replace(";", "\n").replace(",", "\n")
+    lines = [ln.strip() for ln in s2.splitlines() if ln.strip()]
+
+    # Если есть строки с "Аметист - ..." оставим только левую часть
+    cleaned = []
+    for ln in lines:
+        ln = re.sub(r"^\d+\s*[\.\)]\s*", "", ln).strip()
+        ln = ln.split("—")[0].split("-")[0].strip()
+        if ln:
+            cleaned.append(_clean_pot_name(ln))
+
+    # Плоский список
+    flat = [x for x in cleaned if x]
+
+    # Если человек дал 3 строки по 3 потенциала (через пробелы) — расплющим
+    if len(flat) < 9 and len(lines) in (3, 6, 9):
+        tmp = []
+        for ln in lines:
+            ln = re.sub(r"^\d+\s*[\.\)]\s*", "", ln).strip()
+            parts = [p.strip() for p in re.split(r"\s{2,}|\s*,\s*|\s*\|\s*|\s*/\s*", ln) if p.strip()]
+            # иногда просто через пробел — тогда не режем агрессивно
+            if len(parts) == 1:
+                parts = [p.strip() for p in ln.split() if p.strip()]
+            tmp.extend(parts)
+        tmp = [_clean_pot_name(x) for x in tmp if _clean_pot_name(x)]
+        if len(tmp) >= 9:
+            return tmp[:9]
+
+    return flat[:9]
+
+def build_matrix_md(p9: List[str]) -> str:
+    """
+    Строго: 3 ряда x 3 столбца.
+    Столбцы: perception / motivation / instrument
+    """
+    if len(p9) < 9:
+        # fallback — просто список
+        return "\n".join([f"- {x}" for x in p9]) if p9 else "—"
+
+    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
+    md = []
+    md.append("| Ряд | Восприятие | Мотивация | Инструмент |")
+    md.append("|---|---|---|---|")
+    md.append(f"| 1 (ядро / 60%) | {pos1} | {pos2} | {pos3} |")
+    md.append(f"| 2 (наполнение / 30%) | {pos4} | {pos5} | {pos6} |")
+    md.append(f"| 3 (риски / 10%) | {pos7} | {pos8} | {pos9} |")
+    return "\n".join(md)
+
+def _canon_cell_1_3(pot: str, col: str) -> str:
+    """
+    POT_CANON_1_3[pot][col] может быть dict {title, lines, intuition} — соберём в markdown.
+    """
+    pot = _clean_pot_name(pot)
+    d = (POT_CANON_1_3 or {}).get(pot, {}).get(col)
+    if not d:
+        return "—"
+    if isinstance(d, str):
+        return d.strip() or "—"
+    if isinstance(d, dict):
+        title = d.get("title", "").strip()
+        lines = d.get("lines") or []
+        intu = d.get("intuition") or []
+        out = []
+        if title:
+            out.append(f"**{title}**")
+        if lines:
+            out.extend([f"- {str(x).strip()}" for x in lines if str(x).strip()])
+        if intu:
+            out.append("")
+            out.append("**Интуиция / как лучше принимать решения:**")
+            out.extend([f"- {str(x).strip()}" for x in intu if str(x).strip()])
+        return "\n".join(out).strip() or "—"
+    return "—"
+
+def _canon_pos_4_5_6(pot: str, which: str) -> str:
+    pot = _clean_pot_name(pot)
+    canon = {"4": POT_4_CANON, "5": POT_5_CANON, "6": POT_6_CANON}.get(which, {}) or {}
+    d = canon.get(pot)
+    if not d:
+        return "—"
+    # У 4/5/6 у тебя dict со списками/строками — выдадим компактно
+    try:
+        return json.dumps(d, ensure_ascii=False, indent=2)
+    except Exception:
+        return str(d)
+
+def build_canon_bundle(p9: List[str]) -> Dict[str, Any]:
+    """
+    Канон гарантируемо для pos1..pos6 (1-2 ряд). 3 ряд — пока без канона.
+    """
+    if len(p9) < 9:
+        return {}
+
+    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
+    return {
+        "pos": {"pos1": pos1, "pos2": pos2, "pos3": pos3, "pos4": pos4, "pos5": pos5, "pos6": pos6, "pos7": pos7, "pos8": pos8, "pos9": pos9},
+        "canon": {
+            "pos1": _canon_cell_1_3(pos1, "perception"),
+            "pos2": _canon_cell_1_3(pos2, "motivation"),
+            "pos3": _canon_cell_1_3(pos3, "instrument"),
+            "pos4": _canon_pos_4_5_6(pos4, "4"),
+            "pos5": _canon_pos_4_5_6(pos5, "5"),
+            "pos6": _canon_pos_4_5_6(pos6, "6"),
+        }
+    }
+
+def build_spch_report_system_prompt() -> str:
+    return (
+        "Ты — эксперт по методике СПЧ / Personal Potentials (матрица 3x3).\n"
+        "Пиши по-русски.\n"
+        "\n"
+        "ЖЁСТКО:\n"
+        "- НЕ используй слово «кристалл», «камень», «магия», «эзотерика».\n"
+        "- НЕ придумывай свойства потенциалов, опирайся только на переданный CANON_EXCERPTS.\n"
+        "- Если информации недостаточно — так и скажи и задай 3 уточняющих вопроса в конце.\n"
+        "- Матрица: 3 ряда x 3 столбца.\n"
+        "\n"
+        "Столбцы:\n"
+        "1) Восприятие = уникальная призма, как человек видит мир (1 и 4 потенциалы усиливают эту призму)\n"
+        "2) Мотивация = движок, кайф процесса\n"
+        "3) Инструмент = ценность/самоценность, триумф результата, главный способ достигать (может быть не «приятно», но даёт мощный результат)\n"
+        "\n"
+        "Ряды:\n"
+        "1 ряд (ядро) = реализация / профессия / монетизация / 60% энергии\n"
+        "2 ряд (социальный слой) = наполнение + взаимодействие с людьми/аудиторией / 30% энергии\n"
+        "3 ряд (риски) = слабые зоны, лучше делегировать / максимум 10% энергии\n"
+        "\n"
+        "ФОРМАТ: Markdown. Структуру соблюдай строго, без лишней воды."
+    )
+
+def ai_generate_master_report_spch(
+    potentials_raw=f["potentials_table"],
+    name=f.get("name","Клиент"),
+    point_a=profile["realization"].get("point_a",""),
+    point_b=profile["realization"].get("point_b",""),
+    model=model,
+) -> str:
+    """
+    Один расширенный отчёт для клиента в платформе (без «кристаллов»),
+    методически точный под СПЧ.
+    """
     client = get_openai_client()
     if not client:
         raise RuntimeError("OpenAI not configured")
 
-    potentials_norm = normalize_potentials_text(potentials_raw)
+    p9 = parse_potentials_9(potentials_raw)
+    matrix_md = build_matrix_md(p9)
+    bundle = build_canon_bundle(p9)
 
-    system = (
-        "Ты — эксперт по системе Personal Potentials. Пиши очень подробный мастер-отчёт.\n"
-        "Стиль: глубоко, по-человечески, без эзотерического тумана, но с метафорами кристаллов.\n"
-        "Нужно: 1) ядро 2) сильные стороны 3) ловушки 4) решения\n"
-        "5) энергия 6) реализация/деньги 7) отношения/коммуникация 8) идеальная неделя\n"
-        "9) план на 14 дней 10) чек-лист «что перестать/что начать».\n"
-        "Формат: Markdown."
-    )
-    user = f"""Имя: {name or "Клиент"}
-Потенциалы 3×3:
-{potentials_norm}
+    # Собираем канон так, чтобы модель реально его использовала
+    canon_excerpts = ""
+    if bundle:
+        canon_excerpts = (
+            "CANON_EXCERPTS (обязательная база):\n\n"
+            f"POS1 (1 ряд / восприятие) — {bundle['pos']['pos1']}:\n{bundle['canon']['pos1']}\n\n"
+            f"POS2 (1 ряд / мотивация) — {bundle['pos']['pos2']}:\n{bundle['canon']['pos2']}\n\n"
+            f"POS3 (1 ряд / инструмент) — {bundle['pos']['pos3']}:\n{bundle['canon']['pos3']}\n\n"
+            f"POS4 (2 ряд / восприятие) — {bundle['pos']['pos4']}:\n{bundle['canon']['pos4']}\n\n"
+            f"POS5 (2 ряд / мотивация) — {bundle['pos']['pos5']}:\n{bundle['canon']['pos5']}\n\n"
+            f"POS6 (2 ряд / инструмент) — {bundle['pos']['pos6']}:\n{bundle['canon']['pos6']}\n\n"
+            "Примечание: по 3 ряду (pos7–pos9) канон может быть не передан — будь аккуратен и не выдумывай.\n"
+        )
+    else:
+        canon_excerpts = (
+            "CANON_EXCERPTS: (нет данных). Не выдумывай свойства потенциалов. "
+            "Сфокусируйся на методологии рядов/столбцов и попроси вставить 1–9 потенциалы.\n"
+        )
 
-Сгенерируй мастер-отчёт максимально подробно (как премиум отчёт).
+    system = build_spch_report_system_prompt()
+
+    user = f"""
+Имя: {name or "Клиент"}
+
+МАТРИЦА 3x3 (строго):
+{matrix_md}
+
+{canon_excerpts}
+
+Точка А (сейчас):
+{(point_a or "").strip()}
+
+Точка Б (как хочу):
+{(point_b or "").strip()}
+
+Сгенерируй ОДИН расширенный отчёт со структурой:
+
+## 0) Матрица 3x3
+(покажи таблицу сразу)
+
+## 1) Как читать твою матрицу (коротко)
+- 1 ряд = реализация/профессия/монетизация/60% энергии
+- 2 ряд = наполнение/хобби/взаимодействие/30% энергии
+- 3 ряд = риски/делегирование/10% энергии
+- столбцы: восприятие / мотивация / инструмент (объясни так, как в system)
+
+## 2) 1 ряд — ядро реализации (60%)
+- общий портрет реализации
+- отдельно: 1 потенциал (восприятие), 2 (мотивация), 3 (инструмент) — строго по CANON_EXCERPTS
+- связка 1 ряда: какая деятельность «твоя», чтобы трогала все 3 потенциала
+- примеры навыков/действий по каждому из трёх потенциалов (конкретно, но без чеклистов и марафона)
+
+## 3) 2 ряд — наполнение и контакт (30%)
+- как этот ряд заряжает батарейку
+- отдельно: 4/5/6 — строго по CANON_EXCERPTS
+- как не превращать 2 ряд в обязанность, а использовать как топливо для 1 ряда
+
+## 4) 3 ряд — риски и где теряется энергия (<=10%)
+- опиши бережно: где человек чаще всего «сливает силы»
+- что лучше упростить/делегировать/не делать в долгую
+(не выдумывай, если по 7–9 нет канона — давай гипотезы и пометки “требует наблюдения”)
+
+## 5) Почему сейчас так (Точка А) и что мешает идти в Точку Б
+- 2–3 сценария внутреннего конфликта между рядами/столбцами
+- идея “потенциалы могут быть спрятаны за подсознательными программами/страхами”
+- очень важно: без обвинений, но честно (не «нет дисциплины», а «не туда опора»)
+
+## 6) Навигация: куда направлять фокус в ближайшие 2 недели
+- 1 фокус (1–2 предложения)
+- 3 принципа (как держать направление)
+- как это должно лечь на твой “идеальный день” через 4 блока (structure/focus/growth/energy) — без расписания по часам
+
+В конце: 3 уточняющих вопроса, которые улучшат точность отчёта.
 """
 
     resp = client.chat.completions.create(
         model=model,
-        messages=[{"role":"system","content":system},{"role":"user","content":user}],
-        temperature=0.6,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.55,
     )
     return (resp.choices[0].message.content or "").strip()
 
