@@ -1,3 +1,6 @@
+# App.py — Personal Potentials · Реализация
+# One-file clean version (no duplicates, stable input, master report 1st-person)
+
 import os
 import json
 import hashlib
@@ -9,43 +12,22 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 from supabase import create_client
 
-from spch_report import generate_extended_report
-try:
-    from spch_canon import POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON
-except Exception:
-    POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = {}, {}, {}, {}
-
-# OpenAI optional
+# Optional OpenAI
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
 
-from pathlib import Path
 
-DATA_DIR = Path("/tmp/personal_potentials")   # <- важно: не папка проекта
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+# =========================================================
+# CONFIG / SECRETS
+# =========================================================
+APP_TITLE = st.secrets.get("APP_BRAND_TITLE", os.getenv("APP_BRAND_TITLE", "Personal Potentials · Реализация"))
 
-PROFILE_PATH = DATA_DIR / "profile.json"
-
-def load_profile() -> dict:
-    if PROFILE_PATH.exists():
-        try:
-            return json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
-
-def save_profile(profile: dict):
-    PROFILE_PATH.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
-
-# =========================
-# Config / Secrets
-# =========================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
 SUPABASE_KEY = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""))
+
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-APP_TITLE = st.secrets.get("APP_BRAND_TITLE", os.getenv("APP_BRAND_TITLE", "Personal Potentials · Реализация"))
 
 USERS_TABLE = "pp_users"
 PROFILES_TABLE = "pp_profiles"
@@ -56,204 +38,26 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# =========================
-# Security helpers (stdlib PBKDF2)
-# =========================
-def _pbkdf2_hash(password: str, salt: str) -> str:
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
-    return dk.hex()
+# =========================================================
+# CANON IMPORT (optional) — if not available, keep empty
+# =========================================================
+# If Streamlit Cloud sometimes "doesn't see" separate files,
+# you can paste canon dicts directly into this App.py (below).
+try:
+    from spch_canon import POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON
+except Exception:
+    POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = {}, {}, {}, {}
 
-def make_password(password: str) -> tuple[str, str]:
-    salt = secrets.token_urlsafe(16)
-    pw_hash = _pbkdf2_hash(password, salt)
-    return salt, pw_hash
-
-def verify_password(password: str, salt: str, pw_hash: str) -> bool:
-    return secrets.compare_digest(_pbkdf2_hash(password, salt), pw_hash)
-
-
-# =========================
-# Potentials normalization (accept ANY input)
-# =========================
-DEFAULT_NAMES = [
-    "Аметист","Гранат","Цитрин",
-    "Сапфир","Гелиодор","Изумруд",
-    "Янтарь","Шунгит","Рубин"
-]
-
-def _clean_tokens(s: str) -> List[str]:
-    s = (s or "").strip()
-    if not s:
-        return []
-
-    # Replace separators with commas
-    s = s.replace("|", ",").replace("—", "-").replace("–", "-")
-    # Remove common words
-    s = re.sub(r"\b(ряд|row|процен(т|ты)|%|место|позиция|потенциал(ы)?)\b", " ", s, flags=re.I)
-    # Remove numbering like "1." "2)" "3:" etc
-    s = re.sub(r"(?<!\d)(\d{1,2})\s*[\.\)\:\-]", " ", s)
-    s = re.sub(r"[\n\r]+", ",", s)
-    # Split by comma or semicolon
-    parts = re.split(r"[,\;]+", s)
-    parts = [p.strip() for p in parts if p.strip()]
-    return parts
-
-def normalize_potentials_text(raw: str) -> str:
-    
-    "Accepts:"
-    "- 1. Аметист 2. Гранат 3. Цитрин ..."
-    "- Аметист, Гранат, Цитрин, ..."
-    "- Аметист | Гранат | Цитрин ..."
-    "- Any messy text"
-    "Returns 3x3 formatted string for AI."
-    
-    tokens = _clean_tokens(raw)
-
-    # If user pasted already 9 known names in any order — keep that order.
-    # If less than 9, we fill with defaults at the end (for robustness).
-    if len(tokens) >= 9:
-        tokens = tokens[:9]
-    else:
-        # try to preserve what user wrote + fill remaining with defaults (no duplicates if possible)
-        existing = set([t.lower() for t in tokens])
-        for name in DEFAULT_NAMES:
-            if name.lower() not in existing and len(tokens) < 9:
-                tokens.append(name)
-
-    # Build 3x3
-    a = tokens[0:3]
-    b = tokens[3:6]
-    c = tokens[6:9]
-
-    return (
-        f"1 ряд: 1. {a[0]} | 2. {a[1]} | 3. {a[2]}\n"
-        f"2 ряд: 4. {b[0]} | 5. {b[1]} | 6. {b[2]}\n"
-        f"3 ряд: 7. {c[0]} | 8. {c[1]} | 9. {c[2]}"
-    )
+# --- OPTIONAL: paste your canon dicts directly here if imports fail ---
+# POT_CANON_1_3 = {...}
+# POT_4_CANON = {...}
+# POT_5_CANON = {...}
+# POT_6_CANON = {...}
 
 
-# =========================
-# Default data (MVP)
-# =========================
-def default_profile() -> Dict[str, Any]:
-    action_blocks = [
-        {"key": "structure", "title": "Структура дня", "items": []},
-        {"key": "focus", "title": "Фокус недели", "items": []},
-        {"key": "growth", "title": "Рост и навыки", "items": []},
-        {"key": "energy", "title": "Энергия и ресурс", "items": []},
-    ]
-
-    return {
-        "meta": {
-            "schema": "pp.realization.v1",
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z",
-        },
-        "foundation": {
-            "name": "",
-            "potentials_table": "",   # raw user input
-            "notes": "",
-        },
-        "realization": {
-            "point_a": "",
-            "point_b": "",
-            "weekly_focus": "",
-            "focus_explainer": "",
-            "action_blocks": action_blocks,
-            "week_start": "",
-        },
-        "today": {
-            "by_date": {},
-        },
-        "library": {
-            "potentials_guide": "",
-            "master_report": "",
-            "master_report_updated_at": ""
-        },
-        "metrics": {
-            "daily_target": 3,
-            "weekly_target_days": 4
-        },
-    }
-
-def ensure_profile_schema(profile: dict) -> dict:
-    if not isinstance(profile, dict):
-        profile = default_profile()
-
-    profile.setdefault("library", {})
-    profile["library"].setdefault("potentials_guide", "")
-    profile["library"].setdefault("extended_report", "")
-    profile["library"].setdefault("extended_report_updated_at", "")
-    profile["library"].setdefault("positions", {})  # pos1..pos6 сюда
-
-    profile.setdefault("metrics", {})
-    profile["metrics"].setdefault("weekly_targets", {})
-    profile["metrics"].setdefault("monthly_targets", {})
-
-    # на всякий: если нет today/by_date
-    profile.setdefault("today", {"by_date": {}})
-    profile["today"].setdefault("by_date", {})
-
-    return profile
-
-def migrate_profile(data: dict) -> dict:
-    # гарантируем новые секции, чтобы старые профили не падали
-    data.setdefault("library", {
-        "potentials_guide": "",
-        "master_report": "",
-        "master_report_updated_at": ""
-    })
-    data.setdefault("metrics", {
-        "daily_target": 0,
-        "weekly_target": 0,
-        "baseline": "",
-        "weekly_reviews": {}
-    })
-    data.setdefault("today", {"by_date": {}})
-    data.setdefault("foundation", {"name": "", "potentials_table": "", "notes": ""})
-    data.setdefault("realization", {})
-    data["realization"].setdefault("action_blocks", [
-        {"key": "structure", "title": "Структура дня", "items": []},
-        {"key": "focus", "title": "Фокус недели", "items": []},
-        {"key": "growth", "title": "Рост и навыки", "items": []},
-        {"key": "energy", "title": "Энергия и ресурс", "items": []},
-    ])
-    return data
-
-# =========================
-# DB helpers
-# =========================
-def db_get_user_by_email(email: str) -> Optional[dict]:
-    r = sb.table(USERS_TABLE).select("*").eq("email", email.lower().strip()).limit(1).execute()
-    rows = r.data or []
-    return rows[0] if rows else None
-
-def db_create_user(email: str, password: str) -> dict:
-    salt, pw_hash = make_password(password)
-    r = sb.table(USERS_TABLE).insert({
-        "email": email.lower().strip(),
-        "salt": salt,
-        "pw_hash": pw_hash,
-    }).execute()
-    return (r.data or [None])[0]
-
-def db_get_profile(user_id: str) -> Optional[dict]:
-    r = sb.table(PROFILES_TABLE).select("*").eq("user_id", user_id).limit(1).execute()
-    rows = r.data or []
-    return rows[0] if rows else None
-
-def db_upsert_profile(user_id: str, data: dict) -> None:
-    data["meta"]["updated_at"] = datetime.utcnow().isoformat() + "Z"
-    sb.table(PROFILES_TABLE).upsert({
-        "user_id": user_id,
-        "data": data,
-        "updated_at": datetime.utcnow().isoformat() + "Z"
-    }).execute()
-
-
-# =========================
-# UI theme (LIGHT)
-# =========================
+# =========================================================
+# UI THEME (LIGHT)
+# =========================================================
 def inject_css():
     st.markdown(
         """
@@ -334,194 +138,227 @@ hr { border-color: rgba(17,24,39,0.10) !important; }
     )
 
 
-# =========================
-# OpenAI helper (optional)
-# =========================
-def get_openai_client():
-    if not OPENAI_API_KEY or not OpenAI:
-        return None
-    return OpenAI(api_key=OPENAI_API_KEY)
+def header_bar():
+    st.markdown(f"# {APP_TITLE}")
+    st.markdown(
+        '<span class="pp-chip">💠 Personal Potentials</span>'
+        '<span class="pp-chip">Навигация</span>'
+        '<span class="pp-chip">Конструктор действий</span>',
+        unsafe_allow_html=True,
+    )
+    st.write("")
 
-def _extract_json_from_text(txt: str):
-    txt = (txt or "").strip()
-    if not txt:
-        return None
-    # Try direct JSON
-    try:
-        return json.loads(txt)
-    except Exception:
-        pass
-    # Try to find JSON object inside text
-    m = re.search(r"\{[\s\S]*\}", txt)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except Exception:
-        return None
+
+def block_card(title: str, subtitle: str = ""):
+    st.markdown('<div class="pp-card">', unsafe_allow_html=True)
+    st.markdown(f'<div class="pp-title">{title}</div>', unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(f'<div class="pp-sub">{subtitle}</div>', unsafe_allow_html=True)
+
+
+def end_card():
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================================================
+# SECURITY (stdlib PBKDF2)
+# =========================================================
+def _pbkdf2_hash(password: str, salt: str) -> str:
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
+    return dk.hex()
+
+def make_password(password: str) -> tuple[str, str]:
+    salt = secrets.token_urlsafe(16)
+    pw_hash = _pbkdf2_hash(password, salt)
+    return salt, pw_hash
+
+def verify_password(password: str, salt: str, pw_hash: str) -> bool:
+    return secrets.compare_digest(_pbkdf2_hash(password, salt), pw_hash)
+
+
+# =========================================================
+# DB HELPERS
+# =========================================================
+def db_get_user_by_email(email: str) -> Optional[dict]:
+    r = sb.table(USERS_TABLE).select("*").eq("email", email.lower().strip()).limit(1).execute()
+    rows = r.data or []
+    return rows[0] if rows else None
+
+def db_create_user(email: str, password: str) -> dict:
+    salt, pw_hash = make_password(password)
+    r = sb.table(USERS_TABLE).insert({
+        "email": email.lower().strip(),
+        "salt": salt,
+        "pw_hash": pw_hash,
+    }).execute()
+    return (r.data or [None])[0]
+
+def db_get_profile(user_id: str) -> Optional[dict]:
+    r = sb.table(PROFILES_TABLE).select("*").eq("user_id", user_id).limit(1).execute()
+    rows = r.data or []
+    return rows[0] if rows else None
+
+def db_upsert_profile(user_id: str, data: dict) -> None:
+    data.setdefault("meta", {})
+    data["meta"]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    sb.table(PROFILES_TABLE).upsert({
+        "user_id": user_id,
+        "data": data,
+        "updated_at": datetime.utcnow().isoformat() + "Z"
+    }).execute()
+
+
+# =========================================================
+# PROFILE SCHEMA
+# =========================================================
+DEFAULT_NAMES = [
+    "Аметист","Гранат","Цитрин",
+    "Сапфир","Гелиодор","Изумруд",
+    "Янтарь","Шунгит","Рубин"
+]
+
+def default_profile() -> Dict[str, Any]:
+    return {
+        "meta": {
+            "schema": "pp.realization.v2",
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        },
+        "foundation": {
+            "name": "",
+            "potentials_table": "",
+            "notes": "",
+        },
+        "realization": {
+            "point_a": "",
+            "point_b": "",
+            "weekly_focus": "",
+            "focus_explainer": "",
+            "action_blocks": [
+                {"key": "structure", "title": "Структура дня", "items": []},
+                {"key": "focus", "title": "Фокус недели", "items": []},
+                {"key": "growth", "title": "Рост и навыки", "items": []},
+                {"key": "energy", "title": "Энергия и ресурс", "items": []},
+            ],
+            "week_start": "",
+        },
+        "today": {"by_date": {}},
+        "library": {
+            "extended_report_md": "",
+            "extended_report_updated_at": "",
+        },
+        "metrics": {
+            "daily_target": 3,
+            "weekly_target_days": 4
+        },
+    }
+
+def ensure_profile_schema(p: dict) -> dict:
+    if not isinstance(p, dict):
+        p = default_profile()
+
+    p.setdefault("foundation", {})
+    p["foundation"].setdefault("name", "")
+    p["foundation"].setdefault("potentials_table", "")
+    p["foundation"].setdefault("notes", "")
+
+    p.setdefault("realization", {})
+    p["realization"].setdefault("point_a", "")
+    p["realization"].setdefault("point_b", "")
+    p["realization"].setdefault("weekly_focus", "")
+    p["realization"].setdefault("focus_explainer", "")
+    p["realization"].setdefault("week_start", "")
+    p["realization"].setdefault("action_blocks", [
+        {"key": "structure", "title": "Структура дня", "items": []},
+        {"key": "focus", "title": "Фокус недели", "items": []},
+        {"key": "growth", "title": "Рост и навыки", "items": []},
+        {"key": "energy", "title": "Энергия и ресурс", "items": []},
+    ])
+
+    p.setdefault("today", {})
+    p["today"].setdefault("by_date", {})
+
+    p.setdefault("library", {})
+    p["library"].setdefault("extended_report_md", "")
+    p["library"].setdefault("extended_report_updated_at", "")
+
+    p.setdefault("metrics", {})
+    p["metrics"].setdefault("daily_target", 3)
+    p["metrics"].setdefault("weekly_target_days", 4)
+
+    p.setdefault("meta", {})
+    p["meta"].setdefault("schema", "pp.realization.v2")
+
+    return p
+
+
+# =========================================================
+# POTENTIALS PARSING / NORMALIZATION (ONE VERSION)
+# =========================================================
+def _clean_tokens(raw: str) -> List[str]:
+    s = (raw or "").strip()
+    if not s:
+        return []
+    s = s.replace("|", ",").replace("—", "-").replace("–", "-")
+    s = re.sub(r"\b(ряд|row|процен(т|ты)|%|место|позиция|потенциал(ы)?)\b", " ", s, flags=re.I)
+    s = re.sub(r"(?<!\d)(\d{1,2})\s*[\.\)\:\-]", " ", s)
+    s = re.sub(r"[\n\r]+", ",", s)
+    parts = re.split(r"[,\;]+", s)
+    parts = [p.strip() for p in parts if p.strip()]
+    return parts
+
+def parse_potentials_9(raw: str) -> List[str]:
+    tokens = _clean_tokens(raw)
+
+    # fill to 9 safely
+    if len(tokens) >= 9:
+        tokens = tokens[:9]
+    else:
+        existing = set([t.lower() for t in tokens])
+        for name in DEFAULT_NAMES:
+            if name.lower() not in existing and len(tokens) < 9:
+                tokens.append(name)
+
+    return tokens[:9]
 
 def normalize_potentials_text(raw: str) -> str:
-    if not raw:
-        return ""
-    s = raw.strip()
-
-    # если человек просто перечислил через точки/пробелы — оставим как есть, но красиво
-    # уберём двойные пробелы и приведём к строкам
-    s = "\n".join([ln.strip() for ln in s.splitlines() if ln.strip()])
-    if "\n" not in s:
-        # одна строка — разобьём по точкам с номерами или по запятым
-        s = s.replace("1.", "\n1.").replace("2.", "\n2.").replace("3.", "\n3.")
-        s = s.replace("4.", "\n4.").replace("5.", "\n5.").replace("6.", "\n6.")
-        s = s.replace("7.", "\n7.").replace("8.", "\n8.").replace("9.", "\n9.")
-        s = s.replace(",", "\n")
-        s = "\n".join([ln.strip() for ln in s.splitlines() if ln.strip()])
-    return s
-
-def ai_generate_focus(potentials_raw: str, point_a: str, point_b: str, model: str = "gpt-4o-mini") -> dict:
-    client = get_openai_client()
-    if not client:
-        raise RuntimeError("OpenAI not configured")
-
-    potentials_norm = normalize_potentials_text(potentials_raw)
-
-    system = (
-        "Ты — навигатор по реализации человека через Personal Potentials.\n"
-        "Дай практичный план без давления. Не терапия. Не диагноз.\n"
-        "Ответ СТРОГО в JSON.\n"
-        "JSON schema:\n"
-        "{"
-        "  \"weekly_focus\": \"...\","
-        "  \"focus_explainer\": \"...\","
-        "  \"action_blocks\": ["
-        "    {\"key\":\"structure\",\"items\":[{\"id\":\"...\",\"title\":\"...\",\"minutes\":15,\"freq\":\"daily\"}]},"
-        "    {\"key\":\"focus\",\"items\":[...]},"
-        "    {\"key\":\"growth\",\"items\":[...]},"
-        "    {\"key\":\"energy\",\"items\":[...]}"
-        "  ]"
-        "}\n"
-        "Требования: 3–5 задач на блок; задачи маленькие, измеримые; freq только daily/weekly; minutes 10–45."
-    )
-    user = f"""Потенциалы (нормализовано 3×3):
-{potentials_norm}
-
-Точка А (сейчас):
-{point_a}
-
-Точка Б (как хочу):
-{point_b}
-
-Сгенерируй фокус недели и план.
-"""
-
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role":"system","content":system},{"role":"user","content":user}],
-        temperature=0.5,
+    p9 = parse_potentials_9(raw)
+    a, b, c = p9[0:3], p9[3:6], p9[6:9]
+    return (
+        f"1 ряд (ядро): {a[0]} | {a[1]} | {a[2]}\n"
+        f"2 ряд (наполнение/соц.слой): {b[0]} | {b[1]} | {b[2]}\n"
+        f"3 ряд (риски/делегирование): {c[0]} | {c[1]} | {c[2]}"
     )
 
-    txt = (resp.choices[0].message.content or "").strip()
-    data = _extract_json_from_text(txt)
-    if not data:
-        # return a safe fallback so UI doesn't crash
-        return {
-            "weekly_focus": "Собрать фокус и ритм",
-            "focus_explainer": "ИИ вернул не-JSON. Я сохранила безопасный фокус. Проверь ключ OpenAI или попробуй ещё раз.",
-            "action_blocks": [
-                {"key":"structure","items":[{"id":secrets.token_hex(6),"title":"15 минут план дня (1–3 приоритета)","minutes":15,"freq":"daily"}]},
-                {"key":"focus","items":[{"id":secrets.token_hex(6),"title":"1 шаг к цели (самый маленький)","minutes":20,"freq":"daily"}]},
-                {"key":"growth","items":[{"id":secrets.token_hex(6),"title":"10 минут обучение/чтение по теме","minutes":10,"freq":"daily"}]},
-                {"key":"energy","items":[{"id":secrets.token_hex(6),"title":"Прогулка/вода/сон — 1 улучшение","minutes":15,"freq":"daily"}]},
-            ]
-        }
-    return data
+def build_matrix_table_md(p9: List[str]) -> str:
+    if len(p9) < 9:
+        return "—"
+    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
+    lines = [
+        "| Ряд | Восприятие | Мотивация | Инструмент |",
+        "|---|---|---|---|",
+        f"| 1 (ядро / 60%) | {pos1} | {pos2} | {pos3} |",
+        f"| 2 (наполнение / 30%) | {pos4} | {pos5} | {pos6} |",
+        f"| 3 (риски / 10%) | {pos7} | {pos8} | {pos9} |",
+    ]
+    return "\n".join(lines)
 
-# =========================
-# SPCH / Personal Potentials — parsing + report
-# =========================
+def positions_dict(p9: List[str]) -> Dict[str, str]:
+    p9 = (p9 + DEFAULT_NAMES)[:9]
+    return {
+        "pos1": p9[0], "pos2": p9[1], "pos3": p9[2],
+        "pos4": p9[3], "pos5": p9[4], "pos6": p9[5],
+        "pos7": p9[6], "pos8": p9[7], "pos9": p9[8],
+    }
 
+
+# =========================================================
+# CANON EXCERPTS (safe, no hallucination)
+# =========================================================
 def _clean_pot_name(x: str) -> str:
     return (x or "").strip(" \t\r\n-–—•*,:;").strip()
 
-def parse_potentials_9(raw: str) -> List[str]:
-    """
-    Достаём 9 потенциалов в порядке 1..9 из любого ввода:
-    - "1. Аметист 2. Гранат ... 9. Рубин"
-    - "Аметист, Гранат, Цитрин, ..."
-    - 3 строки по 3 значения
-    """
-    if not raw:
-        return []
-
-    s = raw.strip()
-
-    # 1) Пробуем извлечь по нумерации 1..9 (самый надёжный вариант)
-    # Ищем куски между "1." ... "2." ... "9." или концом
-    numbered = []
-    for i in range(1, 10):
-        m = re.search(rf"(?:(?:^|\n|\s){i}\s*[\.\)]\s*)(.+?)(?=(?:\n|\s)(?:{i+1}\s*[\.\)]|$))", s, flags=re.S)
-        if m:
-            val = _clean_pot_name(m.group(1))
-            if val:
-                numbered.append(val)
-
-    if len(numbered) >= 9:
-        return numbered[:9]
-
-    # 2) Иначе: режем по строкам/запятым/точкам с запятой
-    # Убираем маркеры и лишние символы
-    s2 = re.sub(r"[\u2022•]", "\n", s)
-    s2 = s2.replace(";", "\n").replace(",", "\n")
-    lines = [ln.strip() for ln in s2.splitlines() if ln.strip()]
-
-    # Если есть строки с "Аметист - ..." оставим только левую часть
-    cleaned = []
-    for ln in lines:
-        ln = re.sub(r"^\d+\s*[\.\)]\s*", "", ln).strip()
-        ln = ln.split("—")[0].split("-")[0].strip()
-        if ln:
-            cleaned.append(_clean_pot_name(ln))
-
-    # Плоский список
-    flat = [x for x in cleaned if x]
-
-    # Если человек дал 3 строки по 3 потенциала (через пробелы) — расплющим
-    if len(flat) < 9 and len(lines) in (3, 6, 9):
-        tmp = []
-        for ln in lines:
-            ln = re.sub(r"^\d+\s*[\.\)]\s*", "", ln).strip()
-            parts = [p.strip() for p in re.split(r"\s{2,}|\s*,\s*|\s*\|\s*|\s*/\s*", ln) if p.strip()]
-            # иногда просто через пробел — тогда не режем агрессивно
-            if len(parts) == 1:
-                parts = [p.strip() for p in ln.split() if p.strip()]
-            tmp.extend(parts)
-        tmp = [_clean_pot_name(x) for x in tmp if _clean_pot_name(x)]
-        if len(tmp) >= 9:
-            return tmp[:9]
-
-    return flat[:9]
-
-def build_matrix_md(p9: List[str]) -> str:
-    """
-    Строго: 3 ряда x 3 столбца.
-    Столбцы: perception / motivation / instrument
-    """
-    if len(p9) < 9:
-        # fallback — просто список
-        return "\n".join([f"- {x}" for x in p9]) if p9 else "—"
-
-    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
-    md = []
-    md.append("| Ряд | Восприятие | Мотивация | Инструмент |")
-    md.append("|---|---|---|---|")
-    md.append(f"| 1 (ядро / 60%) | {pos1} | {pos2} | {pos3} |")
-    md.append(f"| 2 (наполнение / 30%) | {pos4} | {pos5} | {pos6} |")
-    md.append(f"| 3 (риски / 10%) | {pos7} | {pos8} | {pos9} |")
-    return "\n".join(md)
-
 def _canon_cell_1_3(pot: str, col: str) -> str:
-    """
-    POT_CANON_1_3[pot][col] может быть dict {title, lines, intuition} — соберём в markdown.
-    """
     pot = _clean_pot_name(pot)
     d = (POT_CANON_1_3 or {}).get(pot, {}).get(col)
     if not d:
@@ -529,7 +366,7 @@ def _canon_cell_1_3(pot: str, col: str) -> str:
     if isinstance(d, str):
         return d.strip() or "—"
     if isinstance(d, dict):
-        title = d.get("title", "").strip()
+        title = (d.get("title") or "").strip()
         lines = d.get("lines") or []
         intu = d.get("intuition") or []
         out = []
@@ -539,7 +376,7 @@ def _canon_cell_1_3(pot: str, col: str) -> str:
             out.extend([f"- {str(x).strip()}" for x in lines if str(x).strip()])
         if intu:
             out.append("")
-            out.append("**Интуиция / как лучше принимать решения:**")
+            out.append("**Интуиция / как мне лучше принимать решения:**")
             out.extend([f"- {str(x).strip()}" for x in intu if str(x).strip()])
         return "\n".join(out).strip() or "—"
     return "—"
@@ -550,127 +387,127 @@ def _canon_pos_4_5_6(pot: str, which: str) -> str:
     d = canon.get(pot)
     if not d:
         return "—"
-    # У 4/5/6 у тебя dict со списками/строками — выдадим компактно
     try:
+        # canon for 4/5/6 may be structured — show as markdown-ish bullets if possible
+        if isinstance(d, str):
+            return d.strip() or "—"
         return json.dumps(d, ensure_ascii=False, indent=2)
     except Exception:
         return str(d)
 
-def build_canon_bundle(p9: List[str]) -> Dict[str, Any]:
-    """
-    Канон гарантируемо для pos1..pos6 (1-2 ряд). 3 ряд — пока без канона.
-    """
-    if len(p9) < 9:
-        return {}
+def build_canon_bundle(pos: Dict[str, str]) -> Dict[str, Any]:
+    # row1
+    row1 = {
+        "pos1": _canon_cell_1_3(pos["pos1"], "perception"),
+        "pos2": _canon_cell_1_3(pos["pos2"], "motivation"),
+        "pos3": _canon_cell_1_3(pos["pos3"], "instrument"),
+    }
+    # row2
+    row2 = {
+        "pos4": _canon_pos_4_5_6(pos["pos4"], "4"),
+        "pos5": _canon_pos_4_5_6(pos["pos5"], "5"),
+        "pos6": _canon_pos_4_5_6(pos["pos6"], "6"),
+    }
+    # row3 — use 1_3 canon by columns (as “описание потенциала”), interpretation is risk/delegation
+    row3 = {
+        "pos7": _canon_cell_1_3(pos["pos7"], "perception"),
+        "pos8": _canon_cell_1_3(pos["pos8"], "motivation"),
+        "pos9": _canon_cell_1_3(pos["pos9"], "instrument"),
+    }
+    return {"canon_row1": row1, "canon_row2": row2, "canon_row3": row3}
 
-    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
-    return {
-        "pos": {"pos1": pos1, "pos2": pos2, "pos3": pos3, "pos4": pos4, "pos5": pos5, "pos6": pos6, "pos7": pos7, "pos8": pos8, "pos9": pos9},
-        "canon": {
-            "pos1": _canon_cell_1_3(pos1, "perception"),
-            "pos2": _canon_cell_1_3(pos2, "motivation"),
-            "pos3": _canon_cell_1_3(pos3, "instrument"),
-            "pos4": _canon_pos_4_5_6(pos4, "4"),
-            "pos5": _canon_pos_4_5_6(pos5, "5"),
-            "pos6": _canon_pos_4_5_6(pos6, "6"),
+
+# =========================================================
+# OPENAI HELPERS
+# =========================================================
+def get_openai_client():
+    if not OPENAI_API_KEY or not OpenAI:
+        return None
+    return OpenAI(api_key=OPENAI_API_KEY)
+
+def _extract_json_from_text(txt: str):
+    txt = (txt or "").strip()
+    if not txt:
+        return None
+    try:
+        return json.loads(txt)
+    except Exception:
+        pass
+    m = re.search(r"\{[\s\S]*\}", txt)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+# =========================================================
+# AI: WEEKLY FOCUS (JSON)
+# =========================================================
+def ai_generate_focus(potentials_raw: str, point_a: str, point_b: str, model: str = "gpt-4o-mini") -> dict:
+    client = get_openai_client()
+    if not client:
+        raise RuntimeError("OpenAI not configured")
+
+    p9 = parse_potentials_9(potentials_raw)
+    matrix_md = build_matrix_table_md(p9)
+
+    system = (
+        "Ты — навигатор по реализации через Personal Potentials (матрица 3×3).\n"
+        "Дай практичный план без давления. Не терапия. Не диагноз.\n"
+        "Ответ строго в JSON.\n"
+        "Схема JSON:\n"
+        "{"
+        "  \"weekly_focus\": \"...\","
+        "  \"focus_explainer\": \"...\","
+        "  \"action_blocks\": ["
+        "    {\"key\":\"structure\",\"items\":[{\"id\":\"...\",\"title\":\"...\",\"minutes\":15,\"freq\":\"daily\"}]},"
+        "    {\"key\":\"focus\",\"items\":[...]},"
+        "    {\"key\":\"growth\",\"items\":[...]},"
+        "    {\"key\":\"energy\",\"items\":[...]}"
+        "  ]"
+        "}\n"
+        "Ограничения: 3–5 задач на блок; задачи маленькие и измеримые; freq только daily/weekly; minutes 10–45."
+    )
+
+    user = f"""Матрица 3×3:
+{matrix_md}
+
+Точка А:
+{point_a}
+
+Точка Б:
+{point_b}
+
+Сгенерируй фокус недели и план.
+"""
+
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.5,
+    )
+
+    txt = (resp.choices[0].message.content or "").strip()
+    data = _extract_json_from_text(txt)
+    if not data:
+        return {
+            "weekly_focus": "Собрать фокус и ритм",
+            "focus_explainer": "ИИ вернул не-JSON. Проверь ключ OpenAI или попробуй ещё раз.",
+            "action_blocks": [
+                {"key":"structure","items":[{"id":secrets.token_hex(6),"title":"План дня: 1–3 приоритета","minutes":15,"freq":"daily"}]},
+                {"key":"focus","items":[{"id":secrets.token_hex(6),"title":"Один маленький шаг к цели","minutes":20,"freq":"daily"}]},
+                {"key":"growth","items":[{"id":secrets.token_hex(6),"title":"10 минут обучения по теме","minutes":10,"freq":"daily"}]},
+                {"key":"energy","items":[{"id":secrets.token_hex(6),"title":"Прогулка/вода/сон — 1 улучшение","minutes":15,"freq":"daily"}]},
+            ]
         }
-    }
+    return data
 
-def build_spch_report_system_prompt() -> str:
-    return (
-        "Ты — эксперт по методике СПЧ / Personal Potentials (матрица 3x3).\n"
-        "Пиши по-русски.\n"
-        "\n"
-        "ЖЁСТКО:\n"
-        "- НЕ используй слово «кристалл», «камень», «магия», «эзотерика».\n"
-        "- НЕ придумывай свойства потенциалов, опирайся только на переданный CANON_EXCERPTS.\n"
-        "- Если информации недостаточно — так и скажи и задай 3 уточняющих вопроса в конце.\n"
-        "- Матрица: 3 ряда x 3 столбца.\n"
-        "\n"
-        "Столбцы:\n"
-        "1) Восприятие = уникальная призма, как человек видит мир (1 и 4 потенциалы усиливают эту призму)\n"
-        "2) Мотивация = движок, кайф процесса\n"
-        "3) Инструмент = ценность/самоценность, триумф результата, главный способ достигать (может быть не «приятно», но даёт мощный результат)\n"
-        "\n"
-        "Ряды:\n"
-        "1 ряд (ядро) = реализация / профессия / монетизация / 60% энергии\n"
-        "2 ряд (социальный слой) = наполнение + взаимодействие с людьми/аудиторией / 30% энергии\n"
-        "3 ряд (риски) = слабые зоны, лучше делегировать / максимум 10% энергии\n"
-        "\n"
-        "ФОРМАТ: Markdown. Структуру соблюдай строго, без лишней воды."
-    )
 
-    DEFAULT_NAMES = ["Аметист","Гранат","Цитрин","Сапфир","Гелиодор","Изумруд","Янтарь","Шунгит","Рубин"]
-
-def _clean_tokens(raw: str) -> list[str]:
-    s = (raw or "").strip()
-    if not s:
-        return []
-    s = s.replace("|", ",").replace("—", "-")
-    # убираем слова типа "ряд", "колонка", %
-    s = re.sub(r"\b(ряд|row|процент|ты)\b", " ", s, flags=re.IGNORECASE)
-    # убираем нумерацию 1. 2) 3:
-    s = re.sub(r"(?<!\d)(\d{1,2})\s*[\.\)\:]", " ", s)
-    s = re.sub(r"[\n\r]+", ",", s)
-    parts = re.split(r"[,;]+", s)
-    parts = [p.strip() for p in parts if p.strip()]
-    return parts
-
-def normalize_potentials_text(raw: str) -> str:
-    tokens = _clean_tokens(raw)
-
-    if len(tokens) >= 9:
-        tokens = tokens[:9]
-    else:
-        existing = set([t.lower() for t in tokens])
-        for name in DEFAULT_NAMES:
-            if name.lower() not in existing:
-                tokens.append(name)
-            if len(tokens) >= 9:
-                break
-
-    # row-wise: 1..3 / 4..6 / 7..9
-    r1 = tokens[0:3]
-    r2 = tokens[3:6]
-    r3 = tokens[6:9]
-
-    return (
-        f"1 ряд (ядро): {r1[0]} | {r1[1]} | {r1[2]}\n"
-        f"2 ряд (наполнение/соц.слой): {r2[0]} | {r2[1]} | {r2[2]}\n"
-        f"3 ряд (риски/делегирование): {r3[0]} | {r3[1]} | {r3[2]}"
-    )
-
-def _matrix_positions(raw: str) -> dict:
-    tokens = _clean_tokens(raw)
-    if len(tokens) < 9:
-        # дозаполним
-        existing = set([t.lower() for t in tokens])
-        for name in DEFAULT_NAMES:
-            if name.lower() not in existing:
-                tokens.append(name)
-            if len(tokens) >= 9:
-                break
-    tokens = (tokens + DEFAULT_NAMES)[:9]
-
-    return {
-        "pos1": tokens[0], "pos2": tokens[1], "pos3": tokens[2],
-        "pos4": tokens[3], "pos5": tokens[4], "pos6": tokens[5],
-        "pos7": tokens[6], "pos8": tokens[7], "pos9": tokens[8],
-    }
-
-def _canon_cell_1_3(pot: str, col: str) -> dict:
-    # col in: perception/motivation/instrument
-    d = (POT_CANON_1_3 or {}).get(pot, {}) or {}
-    cell = d.get(col) or {}
-    return cell if isinstance(cell, dict) else {"title": f"{pot}", "lines": [str(cell)]}
-
-def _canon_4_6(pot: str) -> dict:
-    return {
-        "pos4": (POT_4_CANON or {}).get(pot, {}) or {},
-        "pos5": (POT_5_CANON or {}).get(pot, {}) or {},
-        "pos6": (POT_6_CANON or {}).get(pot, {}) or {},
-    }
-
+# =========================================================
+# AI: MASTER REPORT (FIRST PERSON, NO QUESTIONS, CANON-BASED)
+# =========================================================
 def ai_generate_master_report_spch(
     potentials_raw: str,
     name: str,
@@ -682,112 +519,123 @@ def ai_generate_master_report_spch(
     if not client:
         raise RuntimeError("OpenAI not configured")
 
-    pos = _matrix_positions(potentials_raw)
-    matrix_norm = normalize_potentials_text(potentials_raw)
+    p9 = parse_potentials_9(potentials_raw)
+    pos = positions_dict(p9)
+    matrix_table = build_matrix_table_md(p9)
 
-    # Канон для 1 ряда (1-3) и для 2 ряда (4-6) по методике
-    canon_1 = {
-        "pos1": _canon_cell_1_3(pos["pos1"], "perception"),
-        "pos2": _canon_cell_1_3(pos["pos2"], "motivation"),
-        "pos3": _canon_cell_1_3(pos["pos3"], "instrument"),
-    }
-    canon_2 = {
-        "pos4": _canon_4_6(pos["pos4"])["pos4"],
-        "pos5": _canon_4_6(pos["pos5"])["pos5"],
-        "pos6": _canon_4_6(pos["pos6"])["pos6"],
-    }
-    # для 3 ряда (7-9) берём 1-3 канон по столбцам (как описание потенциала),
-    # но интерпретацию просим делать как "риск/делегирование"
-    canon_3 = {
-        "pos7": _canon_cell_1_3(pos["pos7"], "perception"),
-        "pos8": _canon_cell_1_3(pos["pos8"], "motivation"),
-        "pos9": _canon_cell_1_3(pos["pos9"], "instrument"),
-    }
+    canon_bundle = build_canon_bundle(pos)
 
     system = (
-        "Ты — методист и мастер системы СПЧ (матрица 3x3 потенциалов).\n"
-        "Пиши по-русски. Без эзотерики. НЕ говори «камни», «кристаллы».\n"
-        "Жёстко соблюдай логику:\n"
-        "- 3 столбца: Восприятие / Мотивация / Инструмент.\n"
-        "- 3 ряда: 1 ряд = ядро/реализация (≈60% энергии), 2 ряд = наполнение и взаимодействие (≈30%), 3 ряд = риски/делегирование (≈10%).\n"
-        "ВАЖНО: не путай столбцы и ряды.\n"
-        "Опирайся на canon_data, не выдумывай новые свойства потенциалов.\n"
-        "Тон: очень понятный, тёплый, но структурный и взрослый.\n"
-        "Формат: Markdown с заголовками."
+        "Ты — методист и мастер отчётов по СПЧ / Personal Potentials (матрица 3×3).\n"
+        "Пиши по-русски.\n"
+        "\n"
+        "ЖЁСТКО:\n"
+        "- НЕ используй слова: «кристалл», «камень», «магия», «эзотерика».\n"
+        "- НЕ задавай вопросов.\n"
+        "- НЕ выдумывай свойства потенциалов: опирайся ТОЛЬКО на CANON_EXCERPTS.\n"
+        "- Если CANON_EXCERPTS для какой-то позиции пустой («—»), так и пиши: «в каноне данных нет, поэтому я не додумываю».\n"
+        "\n"
+        "СТИЛЬ ОТЧЁТА:\n"
+        "- Пиши от ПЕРВОГО ЛИЦА (как будто это мой личный отчёт). Используй «я», «мне», «мой».\n"
+        "- Тон: взросло, глубоко, структурно, без воды.\n"
+        "- Это не терапия и не диагноз.\n"
+        "\n"
+        "ЛОГИКА МАТРИЦЫ:\n"
+        "Столбцы:\n"
+        "1) Восприятие = моя призма, как я вижу мир (позиции 1 и 4 усиливают эту призму)\n"
+        "2) Мотивация = мой движок, кайф процесса\n"
+        "3) Инструмент = моя ценность/самоценность, триумф результата (может быть не приятно, но даёт мощный эффект)\n"
+        "Ряды:\n"
+        "1 ряд = ядро/реализация/монетизация (≈60% энергии)\n"
+        "2 ряд = наполнение/социальный слой/взаимодействие (≈30%)\n"
+        "3 ряд = риски/делегирование (≈10%)\n"
+        "\n"
+        "ФОРМАТ: Markdown, с чёткими заголовками, таблицами и списками.\n"
     )
 
-    user_payload = {
+    payload = {
         "name": name or "Клиент",
         "point_a": point_a or "",
         "point_b": point_b or "",
-        "matrix_norm": matrix_norm,
+        "matrix_table_md": matrix_table,
         "positions": pos,
-        "canon_row1": canon_1,
-        "canon_row2": canon_2,
-        "canon_row3": canon_3,
+        "CANON_EXCERPTS": canon_bundle,
     }
 
     user = (
-        f"Сделай РАСШИРЕННЫЙ ОТЧЁТ СПЧ для человека.\n\n"
-        f"Требуемая структура (строго):\n"
-        f"1) Матрица 3x3 (покажи таблицей)\n"
-        f"2) Как читать матрицу (очень кратко, но правильно про 60/30/10)\n"
-        f"3) 1 ряд — ядро и реализация (подробно)\n"
-        f"   - отдельно 1/2/3 потенциалы + связка трёх (какая деятельность/роль/ценность)\n"
-        f"   - монетизация/деньги: как усиливаются при жизни из 1 ряда\n"
-        f"4) 2 ряд — наполнение и взаимодействие (подробно)\n"
-        f"   - чем заряжать батарейку; как подпитывает 1 ряд\n"
-        f"5) 3 ряд — риски и делегирование (подробно)\n"
-        f"   - где теряется энергия; что лучше ограничить/делегировать\n"
-        f"6) Столбцы как механика (объясни простыми словами):\n"
-        f"   - Восприятие = уникальная призма (1 и 4 позиции усиливают взгляд)\n"
-        f"   - Мотивация = движок/кайф процесса\n"
-        f"   - Инструмент = ценность/самоценность, радость результата (может быть не «в кайф», но даёт триумф)\n"
-        f"7) Почему точка А может быть такой (гипотезы):\n"
-        f"   - конфликты между рядами/столбцами\n"
-        f"   - уход в 2 ряд вместо 1\n"
-        f"   - блоки/страхи/подсознательные программы как «заслон» потенциалов\n"
-        f"8) Мост к точке Б: какие 3–5 направлений деятельности/форматов лучше всего подходят, исходя из 1 ряда + текущей цели\n"
-        f"9) Финальная сборка: «кто я» в 10–15 строк.\n\n"
-        f"Входные данные (json):\n{json.dumps(user_payload, ensure_ascii=False)}"
+        "Сделай мастерский расширенный отчёт диагностики.\n"
+        "Структура СТРОГО такая:\n"
+        "1) Матрица 3×3 (таблица)\n"
+        "2) Как читать матрицу (очень кратко): 60/30/10 + 3 столбца (восприятие/мотивация/инструмент)\n"
+        "3) 1 ряд — моё ядро и реализация (очень подробно):\n"
+        "   3.1 Моя призма (позиция 1) — как я вижу мир и что для меня важно\n"
+        "   3.2 Мой движок (позиция 2) — что меня реально заводит и где мой драйв\n"
+        "   3.3 Мой инструмент (позиция 3) — где моя самоценность и триумф результата\n"
+        "   3.4 Связка 1–2–3: какие роли/деятельности/форматы работы мне подходят, чтобы задействовать всё ядро\n"
+        "   3.5 Деньги и монетизация: как доход растёт, когда я живу из 1 ряда\n"
+        "4) 2 ряд — наполнение и взаимодействие (подробно):\n"
+        "   4.1 Позиция 4 как усилитель призмы (как это меня подпитывает)\n"
+        "   4.2 Позиция 5 как социальный/клиентский слой (как я взаимодействую и что меня наполняет)\n"
+        "   4.3 Позиция 6 как результат/эмоциональная гармония (что меня возвращает в жизнь)\n"
+        "   4.4 Как 2 ряд подзаряжает 1 ряд: простые принципы\n"
+        "5) 3 ряд — риски и делегирование (подробно):\n"
+        "   5.1 Где я теряю энергию\n"
+        "   5.2 Что мне лучше ограничить\n"
+        "   5.3 Что мне лучше делегировать\n"
+        "6) Механика моей текущей ситуации (Точка А) — почему так могло сложиться:\n"
+        "   - конфликт между рядами/столбцами\n"
+        "   - уход в 2 ряд вместо 1\n"
+        "   - блоки/страхи/подсознательные программы как заслон потенциалов\n"
+        "7) Мост к Точке Б: 3–5 направлений/форматов деятельности, которые логично приведут меня туда\n"
+        "8) Финальная сборка: «Кто я» — 10–15 строк\n"
+        "\n"
+        "Не задавай вопросов. Не добавляй новых свойств потенциалов. Опирайся только на CANON_EXCERPTS.\n"
+        "\n"
+        f"Входные данные (json):\n{json.dumps(payload, ensure_ascii=False)}"
     )
 
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.5,
+        temperature=0.45,
     )
 
     return (resp.choices[0].message.content or "").strip()
 
-# =========================
-# Session state
-# =========================
+
+# =========================================================
+# SESSION STATE INIT
+# =========================================================
 def init_state():
     st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
     inject_css()
-    if "authed" not in st.session_state:
-        st.session_state.authed = False
-    if "user" not in st.session_state:
-        st.session_state.user = None
-    if "profile" not in st.session_state:
-        st.session_state.profile = None
+    st.session_state.setdefault("authed", False)
+    st.session_state.setdefault("user", None)
+    st.session_state.setdefault("profile", None)
 
-def save_profile():
-    if not st.session_state.user or not st.session_state.profile:
+def save_profile_to_db(profile: dict):
+    # save only when explicitly called
+    if not st.session_state.get("user"):
         return
-    db_upsert_profile(st.session_state.user["id"], st.session_state.profile)
+    db_upsert_profile(st.session_state["user"]["id"], profile)
 
 def monday_of_week(d: date) -> date:
     return d.fromordinal(d.toordinal() - d.weekday())
 
+def ensure_week_initialized(profile: dict):
+    r = profile["realization"]
+    week_start = monday_of_week(date.today()).isoformat()
+    if r.get("week_start") != week_start:
+        r["week_start"] = week_start
 
-# =========================
-# Auth screens
-# =========================
+
+# =========================================================
+# AUTH SCREEN
+# =========================================================
 def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
+
     me = st.secrets.get("MASTER_EMAIL", "")
     mp = st.secrets.get("MASTER_PASSWORD", "")
     if me and mp:
@@ -797,11 +645,14 @@ def auth_screen():
                 u = db_create_user(me, mp)
                 data = default_profile()
                 db_upsert_profile(u["id"], data)
+
             st.session_state.authed = True
             st.session_state.user = u
+
             prof = db_get_profile(u["id"])
-            st.session_state.profile = (prof["data"] if prof else default_profile())
+            st.session_state.profile = ensure_profile_schema(prof["data"] if prof else default_profile())
             st.rerun()
+
     st.markdown('<div class="pp-card">', unsafe_allow_html=True)
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
@@ -822,7 +673,7 @@ def auth_screen():
                         db_upsert_profile(u["id"], data)
                         st.session_state.profile = data
                     else:
-                        st.session_state.profile = prof["data"]
+                        st.session_state.profile = ensure_profile_schema(prof["data"])
                     st.rerun()
                 else:
                     st.error("Неверный пароль.")
@@ -848,48 +699,20 @@ def auth_screen():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# =========================
-# UI blocks
-# =========================
-def header_bar():
-    st.markdown(f"# {APP_TITLE}")
-    st.markdown(
-        '<span class="pp-chip">💠 Personal Potentials</span>'
-        '<span class="pp-chip">Навигация</span>'
-        '<span class="pp-chip">Конструктор действий</span>',
-        unsafe_allow_html=True,
-    )
-    st.write("")
-
-def block_card(title: str, subtitle: str = ""):
-    st.markdown('<div class="pp-card">', unsafe_allow_html=True)
-    st.markdown(f'<div class="pp-title">{title}</div>', unsafe_allow_html=True)
-    if subtitle:
-        st.markdown(f'<div class="pp-sub">{subtitle}</div>', unsafe_allow_html=True)
-
-def end_card():
-    st.markdown("</div>", unsafe_allow_html=True)
-
+# =========================================================
+# TAB: FOUNDATION (stable form input)
+# =========================================================
 def foundation_tab(profile: dict):
-    # гарантируем структуру
-    profile.setdefault("foundation", {})
-    profile.setdefault("realization", {})
-    profile.setdefault("library", {})
-    profile["library"].setdefault("extended_report_md", "")
-
     f = profile["foundation"]
-    r = profile["realization"]
     lib = profile["library"]
 
-    st.divider()
-    block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я приведу к формату 3×3.")
+    block_card("0) Основа", "Заполни потенциалы. Сохранение — только по кнопке (чтобы не срывало набор текста).")
 
-    # keys (важно: стабильные ключи)
+    # session keys
     name_key = "pp_name"
-    pot_key  = "pp_potentials_raw"
+    pot_key = "pp_potentials_raw"
     show_key = "pp_show_preview"
 
-    # init session_state 1 раз
     if name_key not in st.session_state:
         st.session_state[name_key] = f.get("name", "")
     if pot_key not in st.session_state:
@@ -897,7 +720,6 @@ def foundation_tab(profile: dict):
     if show_key not in st.session_state:
         st.session_state[show_key] = False
 
-    # ---------- FORM: ввод + сохранение (не будет дергать rerun на каждую букву) ----------
     with st.form("foundation_form", clear_on_submit=False):
         c1, c2 = st.columns([2, 1])
         with c1:
@@ -910,27 +732,20 @@ def foundation_tab(profile: dict):
             key=pot_key,
             height=180
         )
-
         st.checkbox("Показать авто-формат 3×3", key=show_key)
 
-    # сохраняем ТОЛЬКО по кнопке
     if save_clicked:
         f["name"] = (st.session_state.get(name_key) or "").strip()
         f["potentials_table"] = (st.session_state.get(pot_key) or "").strip()
-        try:
-            save_profile(profile)
-            st.success("Сохранено ✅")
-        except Exception as e:
-            st.error(f"Ошибка сохранения: {e}")
+        ensure_week_initialized(profile)
+        save_profile_to_db(profile)
+        st.success("Сохранено ✅")
 
-    # preview — только если чекбокс включен
     if st.session_state.get(show_key) and (st.session_state.get(pot_key) or "").strip():
         st.caption("Как это будет читаться системой (авто-формат 3×3):")
         st.code(normalize_potentials_text(st.session_state[pot_key]))
 
     st.divider()
-
-    # ---------- ГЕНЕРАЦИЯ РАСШИРЕННОГО ОТЧЕТА ----------
     st.subheader("Расширенный отчёт (ИИ)")
 
     has_ai = bool(get_openai_client())
@@ -940,79 +755,87 @@ def foundation_tab(profile: dict):
         index=0,
         disabled=not has_ai
     )
-
     if not has_ai:
         st.warning("OpenAI не настроен (нет ключа) — генерация отчёта недоступна.")
+        end_card()
         return
 
     gen = st.button("🧠 Сгенерировать расширенный отчёт", use_container_width=True)
-
     if gen:
         try:
-            # берем из профиля (а не из session_state), чтобы было стабильно
             potentials_raw = (f.get("potentials_table") or "").strip()
-            name = (f.get("name") or "Клиент").strip()
-            point_a = (r.get("point_a") or "").strip()
-            point_b = (r.get("point_b") or "").strip()
-
             if not potentials_raw:
-                st.error("Сначала заполни потенциалы и нажми «Сохранить основу».")
+                st.error("Сначала вставь потенциалы и нажми «Сохранить основу».")
             else:
+                r = profile["realization"]
                 text = ai_generate_master_report_spch(
                     potentials_raw=potentials_raw,
-                    name=name,
-                    point_a=point_a,
-                    point_b=point_b,
+                    name=(f.get("name") or "Клиент").strip(),
+                    point_a=(r.get("point_a") or "").strip(),
+                    point_b=(r.get("point_b") or "").strip(),
                     model=model,
                 )
                 lib["extended_report_md"] = text
-                save_profile(profile)
+                lib["extended_report_updated_at"] = datetime.utcnow().isoformat() + "Z"
+                save_profile_to_db(profile)
                 st.success("Готово ✅")
-
         except Exception as e:
             st.error(f"Ошибка генерации: {e}")
 
-    # показ отчета
     if (lib.get("extended_report_md") or "").strip():
         st.markdown("### Твой расширенный отчёт")
         st.markdown(lib["extended_report_md"])
 
-def ensure_week_initialized(profile: dict):
-    r = profile["realization"]
-    today = date.today()
-    week_start = monday_of_week(today).isoformat()
-    if r.get("week_start") != week_start:
-        r["week_start"] = week_start
-        save_profile()
+    end_card()
 
 
+# =========================================================
+# TAB: REALIZATION (use form to prevent typing reruns)
+# =========================================================
 def realization_tab(profile: dict):
     ensure_week_initialized(profile)
     r = profile["realization"]
     f = profile["foundation"]
 
-    block_card("1) Реализация", "Точка А → Точка Б → фокус недели → 4 блока действий.")
-    c1, c2 = st.columns(2)
-    with c1:
-        r["point_a"] = st.text_area("Точка А (сейчас)", value=r.get("point_a",""), height=130)
-    with c2:
-        r["point_b"] = st.text_area("Точка Б (как хочу)", value=r.get("point_b",""), height=130)
+    block_card("1) Реализация", "Точка А → Точка Б → фокус недели → 4 блока действий. Сохранение — по кнопке.")
 
-    colA, colB, colC = st.columns([1,1,1.2])
+    # stable keys
+    a_key = "pp_point_a"
+    b_key = "pp_point_b"
+    if a_key not in st.session_state:
+        st.session_state[a_key] = r.get("point_a", "")
+    if b_key not in st.session_state:
+        st.session_state[b_key] = r.get("point_b", "")
+
+    with st.form("realization_form", clear_on_submit=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.text_area("Точка А (сейчас)", key=a_key, height=140)
+        with c2:
+            st.text_area("Точка Б (как хочу)", key=b_key, height=140)
+
+        save_r = st.form_submit_button("💾 Сохранить Реализацию", use_container_width=True)
+
+    if save_r:
+        r["point_a"] = (st.session_state.get(a_key) or "").strip()
+        r["point_b"] = (st.session_state.get(b_key) or "").strip()
+        save_profile_to_db(profile)
+        st.success("Сохранено ✅")
+
+    st.write("")
+    colA, colB, colC = st.columns([1, 1, 1.2])
     with colA:
-        if st.button("💾 Сохранить", use_container_width=True):
-            save_profile()
-            st.success("Сохранено ✅")
+        pass
     with colB:
         has_ai = bool(get_openai_client())
-        model = st.selectbox("Модель ИИ", ["gpt-4o-mini","gpt-4.1-mini"], index=0, disabled=not has_ai)
+        model = st.selectbox("Модель ИИ", ["gpt-4o-mini", "gpt-4.1-mini"], index=0, disabled=not has_ai)
     with colC:
         if st.button("✨ Сгенерировать фокус и план (ИИ)", use_container_width=True, disabled=not has_ai):
             try:
-                if not f.get("potentials_table","").strip():
+                if not (f.get("potentials_table") or "").strip():
                     st.error("Сначала вставь потенциалы во вкладке «0) Основа».")
-                elif not r.get("point_a","").strip() or not r.get("point_b","").strip():
-                    st.error("Заполни Точку А и Точку Б.")
+                elif not (r.get("point_a") or "").strip() or not (r.get("point_b") or "").strip():
+                    st.error("Заполни Точку А и Точку Б и нажми «Сохранить Реализацию».")
                 else:
                     out = ai_generate_focus(
                         potentials_raw=f["potentials_table"],
@@ -1038,9 +861,9 @@ def realization_tab(profile: dict):
                                     "freq": (it.get("freq") or "daily").strip(),
                                 })
                             blocks_by_key[k]["items"] = norm
-                    save_profile()
+
+                    save_profile_to_db(profile)
                     st.success("Готово ✅ Фокус и задачи созданы.")
-                    st.rerun()
             except Exception as e:
                 st.error(f"Ошибка ИИ: {e}")
 
@@ -1054,6 +877,7 @@ def realization_tab(profile: dict):
     for b in r["action_blocks"]:
         block_card(b["title"], "Добавь 3–7 маленьких действий. Частота: daily/weekly. 10–45 минут.")
         items = b.get("items", [])
+
         edited = st.data_editor(
             items,
             num_rows="dynamic",
@@ -1061,8 +885,8 @@ def realization_tab(profile: dict):
             column_config={
                 "id": st.column_config.TextColumn("id", disabled=True),
                 "title": st.column_config.TextColumn("Действие"),
-                "minutes": st.column_config.NumberColumn("мин", min_value=5, max_value=120, step=5),
-                "freq": st.column_config.SelectboxColumn("частота", options=["daily","weekly"]),
+                "minutes": st.column_config.NumberColumn("мин", min_value=10, max_value=45, step=5),
+                "freq": st.column_config.SelectboxColumn("частота", options=["daily", "weekly"]),
             },
             key=f"ed_{b['key']}"
         )
@@ -1079,16 +903,24 @@ def realization_tab(profile: dict):
         b["items"] = norm
 
         if st.button("💾 Сохранить блок", use_container_width=True, key=f"save_block_{b['key']}"):
-            save_profile()
+            save_profile_to_db(profile)
             st.success("Сохранено ✅")
+
         end_card()
 
+    end_card()
+
+
+# =========================================================
+# TAB: TODAY
+# =========================================================
 def today_tab(profile: dict):
     ensure_week_initialized(profile)
     r = profile["realization"]
     t = profile["today"]
 
     block_card("2) Сегодня", "Галочки + заметки. Прогресс без давления.")
+
     chosen = st.date_input("Дата", value=date.today(), key="today_date")
     dkey = chosen.isoformat()
     day = t["by_date"].get(dkey) or {"done": {}, "notes": ""}
@@ -1118,35 +950,42 @@ def today_tab(profile: dict):
         total = len(tasks)
         st.progress(done_count / total if total else 0)
         st.caption(f"Сделано: {done_count} из {total}")
-
         day["done"] = done_map
 
     st.write("")
     day["notes"] = st.text_area("Инсайты / комментарии за день", value=day.get("notes",""), height=120)
 
-    c1, c2 = st.columns([1,1])
+    c1, c2 = st.columns([1, 1])
     with c1:
         if st.button("💾 Сохранить день", use_container_width=True):
             t["by_date"][dkey] = day
-            save_profile()
+            save_profile_to_db(profile)
             st.success("Сохранено ✅")
     with c2:
         if st.button("🧹 Очистить отметки этого дня", use_container_width=True):
             t["by_date"][dkey] = {"done": {}, "notes": ""}
-            save_profile()
+            save_profile_to_db(profile)
             st.success("Очищено ✅")
-            st.rerun()
 
     end_card()
-    
+
+
+# =========================================================
+# TAB: PROGRESS (placeholder)
+# =========================================================
 def progress_tab(profile: dict):
     block_card("3) Прогресс", "Скоро: недельная/месячная статистика, метрики и AI-анализ.")
-    st.info("Пока вкладка в разработке. Следующий шаг — собрать статистику из today.by_date.")
+    st.info("В разработке. Следующий шаг — собрать статистику из today.by_date.")
     end_card()
 
+
+# =========================================================
+# TAB: SETTINGS
+# =========================================================
 def settings_tab():
     block_card("Настройки", "Профиль и выход.")
-    st.code(f"Email: {st.session_state.user.get('email')}")
+    u = st.session_state.get("user") or {}
+    st.code(f"Email: {u.get('email')}")
     if st.button("🚪 Выйти", use_container_width=True):
         st.session_state.authed = False
         st.session_state.user = None
@@ -1155,60 +994,45 @@ def settings_tab():
     end_card()
 
 
-# =========================
-# Main
-# =========================
+# =========================================================
+# MAIN
+# =========================================================
 init_state()
 
 if not st.session_state.authed:
     auth_screen()
     st.stop()
 
-profile = st.session_state.profile
-if not profile:
-    # --- migrate old profiles (важно ДО tabs) ---
-    profile.setdefault("library", {"potentials_guide": "", "master_report": "", "master_report_updated_at": ""})
-    profile.setdefault("metrics", {"daily_target": 0, "weekly_target": 0, "baseline": "", "weekly_reviews": {}})
-    st.session_state.profile = profile
-    save_profile()
-    prof = db_get_profile(st.session_state.user["id"])
-    profile = ensure_profile_schema(profile)
-    st.session_state.profile = profile
-    if prof:
-        st.session_state.profile = prof["data"]
-        profile = st.session_state.profile
+# load profile from session, if missing — from DB
+if not st.session_state.profile:
+    prof_row = db_get_profile(st.session_state.user["id"])
+    if prof_row and prof_row.get("data"):
+        st.session_state.profile = ensure_profile_schema(prof_row["data"])
     else:
         data = default_profile()
         db_upsert_profile(st.session_state.user["id"], data)
         st.session_state.profile = data
-        profile = data
-        
+
+profile = ensure_profile_schema(st.session_state.profile)
 
 header_bar()
 
-tabs = st.tabs([
-    "0) Основа",
-    "1) Реализация",
-    "2) Сегодня",
-    "3) Прогресс",
-    "Настройки"
-])
+tabs = st.tabs(["0) Основа", "1) Реализация", "2) Сегодня", "3) Прогресс", "Настройки"])
 
 with tabs[0]:
     foundation_tab(profile)
-    save_profile()
 
 with tabs[1]:
     realization_tab(profile)
-    save_profile()
 
 with tabs[2]:
     today_tab(profile)
-    save_profile()
 
 with tabs[3]:
     progress_tab(profile)
-    save_profile()
 
 with tabs[4]:
     settings_tab()
+
+# Keep session_state updated (no auto-save)
+st.session_state.profile = profile
