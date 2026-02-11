@@ -853,39 +853,111 @@ def block_card(title: str, subtitle: str = ""):
 def end_card():
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 def foundation_tab(profile: dict):
-    f = profile["foundation"]
+    # -----------------------------
+    # SAFE init (чтобы не падало)
+    # -----------------------------
+    profile.setdefault("foundation", {})
+    profile.setdefault("realization", {})
     profile.setdefault("library", {})
-    profile["library"].setdefault("extended_report", "")
-    profile["library"].setdefault("extended_report_updated_at", "")
 
-    model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4o"], index=0)
+    # ключи, где храним отчёты
+    profile["library"].setdefault("extended_report_md", "")
+    profile["library"].setdefault("extended_report_model", "gpt-4o-mini")
 
-    if st.button("🧠 Сгенерировать расширенный отчёт"):
+    f = profile["foundation"]
+    real = profile["realization"]
+
+    # -----------------------------
+    # UI: заголовок + разделитель
+    # -----------------------------
+    st.divider()
+
+    # -----------------------------
+    # 0) Основа: имя + сохранить
+    # -----------------------------
+    block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я сама приведу к формату 3×3.")
+    c1, c2 = st.columns([2, 1])
+
+    with c1:
+        f["name"] = st.text_input(
+            "Имя (как обращаться)",
+            value=f.get("name", ""),
+        )
+
+    with c2:
+        if st.button("💾 Сохранить основу", use_container_width=True):
+            try:
+                save_profile()
+                st.success("Сохранено ✅")
+            except Exception as e:
+                st.error(f"Не смог сохранить: {e}")
+
+    # -----------------------------
+    # 1) Потенциалы (сырой ввод)
+    # -----------------------------
+    f["potentials_table"] = st.text_area(
+        "Потенциалы (любой формат: «Аметист, Гранат…» или «1. Аметист 2. Гранат…»)",
+        value=f.get("potentials_table", ""),
+        height=140,
+    )
+
+    # -----------------------------
+    # 2) Preview нормализации 3×3
+    # -----------------------------
+    if f.get("potentials_table", "").strip():
+        st.caption("Как это будет читаться системой (авто-формат 3×3):")
         try:
-            foundation = profile.get("foundation", {})
-            real = profile.get("realization", {})
+            st.code(normalize_potentials_text(f.get("potentials_table", "")))
+        except Exception as e:
+            st.warning(f"Не смог нормализовать потенциалы: {e}")
 
-            text = ai_generate_master_report_spch(
-                potentials_raw=foundation.get("potentials_table", ""),
-                name=foundation.get("name", "Клиент"),
-                point_a=real.get("point_a", ""),
-                point_b=real.get("point_b", ""),
-                model=model,
-            )
+    st.divider()
 
-            profile["library"]["extended_report"] = text
-            profile["library"]["extended_report_updated_at"] = utcnow_iso()
-            save_profile()
-            st.success("Готово ✅")
-            st.rerun()
+    # -----------------------------
+    # 3) Модель + генерация
+    # -----------------------------
+    has_ai = bool(get_openai_client())
+
+    model = st.selectbox(
+        "Модель ИИ для отчёта",
+        ["gpt-4o-mini", "gpt-4.1-mini"],
+        index=0 if (profile["library"].get("extended_report_model", "gpt-4o-mini") == "gpt-4o-mini") else 1,
+        disabled=not has_ai,
+    )
+    profile["library"]["extended_report_model"] = model
+
+    if st.button("🧠 Сгенерировать расширенный отчёт", use_container_width=True, disabled=not has_ai):
+        try:
+            client = get_openai_client()
+            if not client:
+                st.error("OpenAI не настроен (нет ключа или клиента).")
+            else:
+                # ВАЖНО: берём именно f.get("potentials_table"), как у тебя в форме
+                text = ai_generate_master_report_spch(
+                    potentials_raw=f.get("potentials_table", ""),
+                    name=f.get("name", "Клиент"),
+                    point_a=real.get("point_a", ""),
+                    point_b=real.get("point_b", ""),
+                    model=model,
+                )
+
+                profile["library"]["extended_report_md"] = text or ""
+                save_profile()
+
+                st.success("Готово ✅")
+                st.rerun()
+
         except Exception as e:
             st.error(f"Ошибка генерации: {e}")
 
-    if profile.get("library", {}).get("extended_report"):
+    # -----------------------------
+    # 4) Показ отчёта
+    # -----------------------------
+    report_md = profile.get("library", {}).get("extended_report_md", "")
+    if report_md.strip():
         st.markdown("### Твой расширенный отчёт")
-        st.markdown(profile["library"]["extended_report"])
+        st.markdown(report_md)
 
 def ensure_week_initialized(profile: dict):
     r = profile["realization"]
