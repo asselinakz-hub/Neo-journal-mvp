@@ -852,7 +852,7 @@ def foundation_tab(profile: dict):
         model=model,
     )
     
-     if profile["library"].get("extended_report"):
+    if profile["library"].get("extended_report"):
         st.markdown("### Твой расширенный отчёт")
         st.markdown(profile["library"]["extended_report"])
 
