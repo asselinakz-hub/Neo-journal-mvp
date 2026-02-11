@@ -1,4 +1,4 @@
-import os
+maimport os
 import json
 import hashlib
 import secrets
@@ -564,7 +564,7 @@ def foundation_tab(profile: dict):
     st.markdown("### Справочник по потенциалам (для чтения)")
     profile["library"]["potentials_guide"] = st.text_area(
         "Вставь сюда большой справочник (Markdown). Он будет доступен всегда.",
-        value=profile["library"].get("potentials_guide",""),
+        value=profile.get("library", {}).get("potentials_guide", ""),
         height=220
     )
     if st.button("💾 Сохранить справочник", use_container_width=True, key="save_guide"):
@@ -776,6 +776,11 @@ if not st.session_state.authed:
 
 profile = st.session_state.profile
 if not profile:
+    # --- migrate old profiles (важно ДО tabs) ---
+    profile.setdefault("library", {"potentials_guide": "", "master_report": "", "master_report_updated_at": ""})
+    profile.setdefault("metrics", {"daily_target": 0, "weekly_target": 0, "baseline": "", "weekly_reviews": {}})
+    st.session_state.profile = profile
+    save_profile()
     prof = db_get_profile(st.session_state.user["id"])
     if prof:
         st.session_state.profile = prof["data"]
