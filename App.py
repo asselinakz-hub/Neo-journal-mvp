@@ -558,28 +558,6 @@ def foundation_tab(profile: dict):
     f = profile["foundation"]
     st.divider()
 
-    has_ai = bool(get_openai_client())
-    model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4.1-mini"], index=0, disabled=not has_ai)
-
-    if st.button("🧠 Сгенерировать расширенный отчёт (ИИ)", use_container_width=True, disabled=not has_ai):
-        try:
-            client = get_openai_client()
-            if not client:
-                st.error("OpenAI не настроен (нет OPENAI_API_KEY).")
-            else:
-                text = generate_extended_report(client, model=model, profile=profile)
-                profile["library"]["extended_report"] = text
-                profile["library"]["extended_report_updated_at"] = datetime.utcnow().isoformat() + "Z"
-                save_profile()
-                st.success("Готово ✅")
-                st.rerun()
-        except Exception as e:
-            st.error(f"Ошибка генерации: {e}")
-
-    if profile["library"].get("extended_report"):
-        st.markdown("### Твой расширенный отчёт")
-        st.markdown(profile["library"]["extended_report"])
-
     # --- migrate old profiles (safe) ---
     profile.setdefault("library", {"potentials_guide": "", "master_report": "", "master_report_updated_at": ""})
     profile.setdefault("metrics", {"daily_target": 0, "weekly_target": 0, "baseline": "", "weekly_reviews": {}})
@@ -603,31 +581,28 @@ def foundation_tab(profile: dict):
     if f.get("potentials_table","").strip():
         st.caption("Как это будет читаться системой (авто-формат):")
         st.code(normalize_potentials_text(f["potentials_table"]), language="")
-
-    f["notes"] = st.text_area(
-        "Короткие заметки (необязательно)",
-        value=f.get("notes",""),
-        height=100
-    )
     
-    st.markdown("### Мастер-отчёт (ИИ)")
-    has_ai = bool(get_openai_client())
-    model_r = st.selectbox("Модель отчёта", ["gpt-4o-mini","gpt-4.1-mini"], index=0, disabled=not has_ai, key="model_master")
+        has_ai = bool(get_openai_client())
+    model = st.selectbox("Модель ИИ для отчёта", ["gpt-4o-mini", "gpt-4.1-mini"], index=0, disabled=not has_ai)
 
-    if st.button("🧠 Сгенерировать мастер-отчёт", use_container_width=True, disabled=not has_ai, key="btn_master_report"):
-        if not f.get("potentials_table","").strip():
-            st.error("Сначала вставь потенциалы.")
-        else:
-            txt = ai_generate_master_report(f["potentials_table"], f.get("name",""), model=model_r)
-            profile["library"]["master_report"] = txt
-            profile["library"]["master_report_updated_at"] = datetime.utcnow().isoformat()+"Z"
-            save_profile()
-            st.success("Готово ✅ Мастер-отчёт сохранён.")
-            st.rerun()
+    if st.button("🧠 Сгенерировать расширенный отчёт (ИИ)", use_container_width=True, disabled=not has_ai):
+        try:
+            client = get_openai_client()
+            if not client:
+                st.error("OpenAI не настроен (нет OPENAI_API_KEY).")
+            else:
+                text = generate_extended_report(client, model=model, profile=profile)
+                profile["library"]["extended_report"] = text
+                profile["library"]["extended_report_updated_at"] = datetime.utcnow().isoformat() + "Z"
+                save_profile()
+                st.success("Готово ✅")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Ошибка генерации: {e}")
 
-    if profile["library"].get("master_report"):
-        st.markdown(profile["library"]["master_report"])
-    end_card()
+    if profile["library"].get("extended_report"):
+        st.markdown("### Твой расширенный отчёт")
+        st.markdown(profile["library"]["extended_report"])
 
 
 def ensure_week_initialized(profile: dict):
