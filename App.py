@@ -325,7 +325,7 @@ def get_openai_client():
         return None
     return OpenAI(api_key=OPENAI_API_KEY)
 
-def _extract_json_from_text(txt: str) -> Optional[dict]:
+def _extract_json_from_text(txt: str):
     txt = (txt or "").strip()
     if not txt:
         return None
@@ -584,7 +584,6 @@ def build_spch_report_system_prompt() -> str:
     )
 
 import re
-from typing import Optional
 
 DEFAULT_NAMES = ["Аметист","Гранат","Цитрин","Сапфир","Гелиодор","Изумруд","Янтарь","Шунгит","Рубин"]
 
