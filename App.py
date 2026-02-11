@@ -801,7 +801,13 @@ if not profile:
 
 header_bar()
 
-tabs = st.tabs(["0) Основа", "1) Реализация", "2) Сегодня", "3) Прогресс", "Настройки"])
+tabs = st.tabs([
+    "0) Основа",
+    "1) Реализация",
+    "2) Сегодня",
+    "3) Прогресс",
+    "Настройки"
+])
 
 with tabs[0]:
     foundation_tab(profile)
@@ -816,11 +822,8 @@ with tabs[2]:
     save_profile()
 
 with tabs[3]:
-    settings_tab()
-    
-with tabs[4]:
     progress_tab(profile)
     save_profile()
 
-with tabs[5]:
+with tabs[4]:
     settings_tab()
