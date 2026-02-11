@@ -142,6 +142,15 @@ def default_profile() -> Dict[str, Any]:
         "today": {
             "by_date": {}
         }
+        "library": {
+            "potentials_guide": "",
+            "master_report": "",
+            "master_report_updated_at": ""
+        },
+        "metrics": {
+            "daily_target": 3,
+            "weekly_target_days": 4
+        },
     }
 
 
@@ -285,6 +294,23 @@ def _extract_json_from_text(txt: str) -> Optional[dict]:
     except Exception:
         return None
 
+def normalize_potentials_text(raw: str) -> str:
+    if not raw:
+        return ""
+    s = raw.strip()
+
+    # если человек просто перечислил через точки/пробелы — оставим как есть, но красиво
+    # уберём двойные пробелы и приведём к строкам
+    s = "\n".join([ln.strip() for ln in s.splitlines() if ln.strip()])
+    if "\n" not in s:
+        # одна строка — разобьём по точкам с номерами или по запятым
+        s = s.replace("1.", "\n1.").replace("2.", "\n2.").replace("3.", "\n3.")
+        s = s.replace("4.", "\n4.").replace("5.", "\n5.").replace("6.", "\n6.")
+        s = s.replace("7.", "\n7.").replace("8.", "\n8.").replace("9.", "\n9.")
+        s = s.replace(",", "\n")
+        s = "\n".join([ln.strip() for ln in s.splitlines() if ln.strip()])
+    return s
+
 def ai_generate_focus(potentials_raw: str, point_a: str, point_b: str, model: str = "gpt-4o-mini") -> dict:
     client = get_openai_client()
     if not client:
@@ -343,6 +369,34 @@ def ai_generate_focus(potentials_raw: str, point_a: str, point_b: str, model: st
         }
     return data
 
+def ai_generate_master_report(potentials_raw: str, name: str, model: str="gpt-4o-mini") -> str:
+    client = get_openai_client()
+    if not client:
+        raise RuntimeError("OpenAI not configured")
+
+    potentials_norm = normalize_potentials_text(potentials_raw)
+
+    system = (
+        "Ты — эксперт по системе Personal Potentials. Пиши очень подробный мастер-отчёт.\n"
+        "Стиль: глубоко, по-человечески, без эзотерического тумана, но с метафорами кристаллов.\n"
+        "Нужно: 1) ядро 2) сильные стороны 3) ловушки 4) решения\n"
+        "5) энергия 6) реализация/деньги 7) отношения/коммуникация 8) идеальная неделя\n"
+        "9) план на 14 дней 10) чек-лист «что перестать/что начать».\n"
+        "Формат: Markdown."
+    )
+    user = f"""Имя: {name or "Клиент"}
+Потенциалы 3×3:
+{potentials_norm}
+
+Сгенерируй мастер-отчёт максимально подробно (как премиум отчёт).
+"""
+
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
+        temperature=0.6,
+    )
+    return (resp.choices[0].message.content or "").strip()
 
 # =========================
 # Session state
@@ -372,7 +426,20 @@ def monday_of_week(d: date) -> date:
 def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
-
+    me = st.secrets.get("MASTER_EMAIL", "")
+    mp = st.secrets.get("MASTER_PASSWORD", "")
+    if me and mp:
+        if st.button("⚡ Войти как мастер (тест)", use_container_width=True):
+        u = db_get_user_by_email(me)
+            if not u:
+                u = db_create_user(me, mp)
+                data = default_profile()
+                db_upsert_profile(u["id"], data)
+            st.session_state.authed = True
+            st.session_state.user = u
+            prof = db_get_profile(u["id"])
+            st.session_state.profile = (prof["data"] if prof else default_profile())
+            st.rerun()
     st.markdown('<div class="pp-card">', unsafe_allow_html=True)
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
@@ -470,6 +537,34 @@ def foundation_tab(profile: dict):
         value=f.get("notes",""),
         height=100
     )
+    
+    st.markdown("### Справочник по потенциалам (для чтения)")
+    profile["library"]["potentials_guide"] = st.text_area(
+        "Вставь сюда большой справочник (Markdown). Он будет доступен всегда.",
+        value=profile["library"].get("potentials_guide",""),
+        height=220
+    )
+    if st.button("💾 Сохранить справочник", use_container_width=True, key="save_guide"):
+        save_profile()
+        st.success("Сохранено ✅")
+
+    st.markdown("### Мастер-отчёт (ИИ)")
+    has_ai = bool(get_openai_client())
+    model_r = st.selectbox("Модель отчёта", ["gpt-4o-mini","gpt-4.1-mini"], index=0, disabled=not has_ai, key="model_master")
+
+    if st.button("🧠 Сгенерировать мастер-отчёт", use_container_width=True, disabled=not has_ai, key="btn_master_report"):
+        if not f.get("potentials_table","").strip():
+            st.error("Сначала вставь потенциалы.")
+        else:
+            txt = ai_generate_master_report(f["potentials_table"], f.get("name",""), model=model_r)
+            profile["library"]["master_report"] = txt
+            profile["library"]["master_report_updated_at"] = datetime.utcnow().isoformat()+"Z"
+            save_profile()
+            st.success("Готово ✅ Мастер-отчёт сохранён.")
+            st.rerun()
+
+    if profile["library"].get("master_report"):
+        st.markdown(profile["library"]["master_report"])
     end_card()
 
 
@@ -579,7 +674,6 @@ def realization_tab(profile: dict):
             st.success("Сохранено ✅")
         end_card()
 
-
 def today_tab(profile: dict):
     ensure_week_initialized(profile)
     r = profile["realization"]
@@ -671,7 +765,7 @@ if not profile:
 
 header_bar()
 
-tabs = st.tabs(["0) Основа", "1) Реализация", "2) Сегодня", "Настройки"])
+tabs = st.tabs(["0) Основа", "1) Реализация", "2) Сегодня", "3) Прогресс", "Настройки"])
 
 with tabs[0]:
     foundation_tab(profile)
@@ -686,4 +780,11 @@ with tabs[2]:
     save_profile()
 
 with tabs[3]:
+    settings_tab()
+    
+with tabs[4]:
+    progress_tab(profile)
+    save_profile()
+
+with tabs[5]:
     settings_tab()
