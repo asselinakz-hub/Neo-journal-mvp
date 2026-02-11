@@ -854,110 +854,56 @@ def end_card():
     st.markdown("</div>", unsafe_allow_html=True)
 
 def foundation_tab(profile: dict):
-    # -----------------------------
-    # SAFE init (чтобы не падало)
-    # -----------------------------
     profile.setdefault("foundation", {})
     profile.setdefault("realization", {})
     profile.setdefault("library", {})
 
-    # ключи, где храним отчёты
-    profile["library"].setdefault("extended_report_md", "")
-    profile["library"].setdefault("extended_report_model", "gpt-4o-mini")
-
     f = profile["foundation"]
-    real = profile["realization"]
 
-    # -----------------------------
-    # UI: заголовок + разделитель
-    # -----------------------------
     st.divider()
-
-    # -----------------------------
-    # 0) Основа: имя + сохранить
-    # -----------------------------
     block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я сама приведу к формату 3×3.")
-    c1, c2 = st.columns([2, 1])
 
-    with c1:
-        f["name"] = st.text_input(
-            "Имя (как обращаться)",
-            value=f.get("name", ""),
+    # --- DRAFT в session_state (чтобы не терялось при rerun) ---
+    if "draft_name" not in st.session_state:
+        st.session_state["draft_name"] = f.get("name", "")
+    if "draft_potentials" not in st.session_state:
+        st.session_state["draft_potentials"] = f.get("potentials_table", "")
+
+    # --- ВАЖНО: form блокирует перезапуск на каждом символе ---
+    with st.form("foundation_form", clear_on_submit=False):
+        c1, c2 = st.columns([2, 1])
+
+        with c1:
+            st.session_state["draft_name"] = st.text_input(
+                "Имя (как обращаться)",
+                value=st.session_state["draft_name"],
+            )
+
+        with c2:
+            submit = st.form_submit_button("💾 Сохранить основу", use_container_width=True)
+
+        st.session_state["draft_potentials"] = st.text_area(
+            "Потенциалы (любой формат: «Аметист, Гранат…» или «1. Аметист 2. Гранат…»)",
+            value=st.session_state["draft_potentials"],
+            height=160,
         )
 
-    with c2:
-        if st.button("💾 Сохранить основу", use_container_width=True):
-            try:
-                save_profile()
-                st.success("Сохранено ✅")
-            except Exception as e:
-                st.error(f"Не смог сохранить: {e}")
+        show_preview = st.checkbox("Показать как это будет читаться системой (3×3)", value=False)
 
-    # -----------------------------
-    # 1) Потенциалы (сырой ввод)
-    # -----------------------------
-    f["potentials_table"] = st.text_area(
-        "Потенциалы (любой формат: «Аметист, Гранат…» или «1. Аметист 2. Гранат…»)",
-        value=f.get("potentials_table", ""),
-        height=140,
-    )
+    # --- После submit сохраняем в profile ---
+    if submit:
+        f["name"] = (st.session_state.get("draft_name") or "").strip()
+        f["potentials_table"] = (st.session_state.get("draft_potentials") or "").strip()
+        try:
+            save_profile()
+            st.success("Сохранено ✅")
+        except Exception as e:
+            st.error(f"Не смог сохранить: {e}")
 
-    # -----------------------------
-    # 2) Preview нормализации 3×3
-    # -----------------------------
-    if f.get("potentials_table", "").strip():
+    # --- Preview: рисуем только если включили галочку ---
+    if show_preview and st.session_state.get("draft_potentials", "").strip():
         st.caption("Как это будет читаться системой (авто-формат 3×3):")
-        try:
-            st.code(normalize_potentials_text(f.get("potentials_table", "")))
-        except Exception as e:
-            st.warning(f"Не смог нормализовать потенциалы: {e}")
-
-    st.divider()
-
-    # -----------------------------
-    # 3) Модель + генерация
-    # -----------------------------
-    has_ai = bool(get_openai_client())
-
-    model = st.selectbox(
-        "Модель ИИ для отчёта",
-        ["gpt-4o-mini", "gpt-4.1-mini"],
-        index=0 if (profile["library"].get("extended_report_model", "gpt-4o-mini") == "gpt-4o-mini") else 1,
-        disabled=not has_ai,
-    )
-    profile["library"]["extended_report_model"] = model
-
-    if st.button("🧠 Сгенерировать расширенный отчёт", use_container_width=True, disabled=not has_ai):
-        try:
-            client = get_openai_client()
-            if not client:
-                st.error("OpenAI не настроен (нет ключа или клиента).")
-            else:
-                # ВАЖНО: берём именно f.get("potentials_table"), как у тебя в форме
-                text = ai_generate_master_report_spch(
-                    potentials_raw=f.get("potentials_table", ""),
-                    name=f.get("name", "Клиент"),
-                    point_a=real.get("point_a", ""),
-                    point_b=real.get("point_b", ""),
-                    model=model,
-                )
-
-                profile["library"]["extended_report_md"] = text or ""
-                save_profile()
-
-                st.success("Готово ✅")
-                st.rerun()
-
-        except Exception as e:
-            st.error(f"Ошибка генерации: {e}")
-
-    # -----------------------------
-    # 4) Показ отчёта
-    # -----------------------------
-    report_md = profile.get("library", {}).get("extended_report_md", "")
-    if report_md.strip():
-        st.markdown("### Твой расширенный отчёт")
-        st.markdown(report_md)
+        st.code(normalize_potentials_text(st.session_state["draft_potentials"]))
 
 def ensure_week_initialized(profile: dict):
     r = profile["realization"]
