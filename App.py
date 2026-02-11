@@ -21,6 +21,23 @@ try:
 except Exception:
     OpenAI = None
 
+from pathlib import Path
+
+DATA_DIR = Path("/tmp/personal_potentials")   # <- важно: не папка проекта
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+PROFILE_PATH = DATA_DIR / "profile.json"
+
+def load_profile() -> dict:
+    if PROFILE_PATH.exists():
+        try:
+            return json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def save_profile(profile: dict):
+    PROFILE_PATH.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # =========================
 # Config / Secrets
@@ -855,56 +872,50 @@ def end_card():
 
 def foundation_tab(profile: dict):
     profile.setdefault("foundation", {})
-    profile.setdefault("realization", {})
-    profile.setdefault("library", {})
-
     f = profile["foundation"]
 
     st.divider()
     block_card("0) Основа", "Можно просто перечислить потенциалы (через запятую). Я сама приведу к формату 3×3.")
 
-    # --- DRAFT в session_state (чтобы не терялось при rerun) ---
-    if "draft_name" not in st.session_state:
-        st.session_state["draft_name"] = f.get("name", "")
-    if "draft_potentials" not in st.session_state:
-        st.session_state["draft_potentials"] = f.get("potentials_table", "")
+    # keys
+    name_key = "foundation_name"
+    pot_key  = "foundation_potentials"
 
-    # --- ВАЖНО: form блокирует перезапуск на каждом символе ---
+    # set defaults once
+    if name_key not in st.session_state:
+        st.session_state[name_key] = f.get("name", "")
+    if pot_key not in st.session_state:
+        st.session_state[pot_key] = f.get("potentials_table", "")
+
     with st.form("foundation_form", clear_on_submit=False):
         c1, c2 = st.columns([2, 1])
-
         with c1:
-            st.session_state["draft_name"] = st.text_input(
-                "Имя (как обращаться)",
-                value=st.session_state["draft_name"],
-            )
-
+            st.text_input("Имя (как обращаться)", key=name_key)
         with c2:
-            submit = st.form_submit_button("💾 Сохранить основу", use_container_width=True)
+            submitted = st.form_submit_button("💾 Сохранить основу", use_container_width=True)
 
-        st.session_state["draft_potentials"] = st.text_area(
+        st.text_area(
             "Потенциалы (любой формат: «Аметист, Гранат…» или «1. Аметист 2. Гранат…»)",
-            value=st.session_state["draft_potentials"],
-            height=160,
+            key=pot_key,
+            height=160
         )
 
-        show_preview = st.checkbox("Показать как это будет читаться системой (3×3)", value=False)
+        show_preview = st.checkbox("Показать авто-формат 3×3", value=False)
 
-    # --- После submit сохраняем в profile ---
-    if submit:
-        f["name"] = (st.session_state.get("draft_name") or "").strip()
-        f["potentials_table"] = (st.session_state.get("draft_potentials") or "").strip()
+    # save only on submit
+    if submitted:
+        f["name"] = (st.session_state.get(name_key) or "").strip()
+        f["potentials_table"] = (st.session_state.get(pot_key) or "").strip()
         try:
-            save_profile()
+            save_profile(profile)
             st.success("Сохранено ✅")
         except Exception as e:
-            st.error(f"Не смог сохранить: {e}")
+            st.error(f"Ошибка сохранения: {e}")
 
-    # --- Preview: рисуем только если включили галочку ---
-    if show_preview and st.session_state.get("draft_potentials", "").strip():
+    # preview only if asked
+    if show_preview and (st.session_state.get(pot_key) or "").strip():
         st.caption("Как это будет читаться системой (авто-формат 3×3):")
-        st.code(normalize_potentials_text(st.session_state["draft_potentials"]))
-
+        st.code(normalize_potentials_text(st.session_state[pot_key]))
 def ensure_week_initialized(profile: dict):
     r = profile["realization"]
     today = date.today()
