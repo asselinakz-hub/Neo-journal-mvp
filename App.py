@@ -999,16 +999,19 @@ def save_profile_to_db():
 # =========================
 # Auth screen
 # =========================
-def auth_screen():
+ddef auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы.")
 
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
-        email = st.text_input("Email", key="login_email")
-        pw = st.text_input("Пароль", type="password", key="login_pw")
-        if st.button("Войти", use_container_width=True):
+        with st.form("login_form", clear_on_submit=False):
+            email = st.text_input("Email", key="login_email")
+            pw = st.text_input("Пароль", type="password", key="login_pw")
+            submitted = st.form_submit_button("Войти", use_container_width=True)
+
+        if submitted:
             u = db_get_user_by_email(email)
             if not u:
                 st.error("Пользователь не найден.")
@@ -1029,10 +1032,13 @@ def auth_screen():
             st.rerun()
 
     with tab_signup:
-        email2 = st.text_input("Email (для доступа)", key="su_email")
-        pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
-        pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
-        if st.button("Создать доступ", use_container_width=True):
+        with st.form("signup_form", clear_on_submit=False):
+            email2 = st.text_input("Email (для доступа)", key="su_email")
+            pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
+            pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
+            submitted2 = st.form_submit_button("Создать доступ", use_container_width=True)
+
+        if submitted2:
             if not email2 or "@" not in email2:
                 st.error("Введи корректный email.")
                 return
@@ -1050,7 +1056,6 @@ def auth_screen():
             data = default_profile()
             db_upsert_profile(u["id"], data)
             st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
-
 def header_bar():
     st.markdown(f"# {APP_TITLE}")
     st.markdown("💠 Personal Potentials · Навигация · Конструктор действий")
