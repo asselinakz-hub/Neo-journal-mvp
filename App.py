@@ -430,7 +430,7 @@ def auth_screen():
     mp = st.secrets.get("MASTER_PASSWORD", "")
     if me and mp:
         if st.button("⚡ Войти как мастер (тест)", use_container_width=True):
-        u = db_get_user_by_email(me)
+            u = db_get_user_by_email(me)
             if not u:
                 u = db_create_user(me, mp)
                 data = default_profile()
