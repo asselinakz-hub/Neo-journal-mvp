@@ -958,7 +958,7 @@ def build_canon_1_6_bundle_from_p9(p9: list[str]) -> dict:
     }
 
 
-ddef build_unified_report_system_prompt() -> str:
+def build_unified_report_system_prompt() -> str:
     return "\n".join([
         "# ROLE",
         "Вы — эксперт по методике СПЧ / Personal Potentials (матрица 3x3).",
