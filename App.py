@@ -1038,6 +1038,51 @@ def build_unified_report_user_prompt(name: str, matrix_md: str, canon_bundle_md:
         "- Только канон как источник смыслов.",
     ]).strip()
 
+def build_canon_bundle_md(pos1: str, pos2: str, pos3: str, pos4: str, pos5: str, pos6: str) -> str:
+    """
+    Собирает CANON_BUNDLE markdown по позициям 1–6.
+    Источники берёт из глобальных словарей:
+    - POT_CANON_1_3 (для 1–3 по столбцам perception/motivation/instrument)
+    - POT_4_CANON / POT_5_CANON / POT_6_CANON (для 4–6)
+    """
+
+    def canon_1_3(pot: str, col: str) -> str:
+        pot = _pot_key(pot)
+        if not pot:
+            return "—"
+        d = (globals().get("POT_CANON_1_3") or {}).get(pot)
+        if not d:
+            return "—"
+        cell = d.get(col)
+        if isinstance(cell, str):
+            return cell.strip() or "—"
+        if isinstance(cell, dict):
+            return _canon_dict_to_md(cell)
+        return "—"
+
+    def canon_pos(pot: str, dict_name: str) -> str:
+        pot = _pot_key(pot)
+        if not pot:
+            return "—"
+        canon_dict = globals().get(dict_name) or {}
+        d = canon_dict.get(pot)
+        if isinstance(d, str):
+            return d.strip() or "—"
+        if isinstance(d, dict):
+            return _canon_dict_to_md(d)
+        return "—"
+
+    parts = [
+        f"## Позиция 1 (Восприятие): {pos1}\n{canon_1_3(pos1, 'perception')}",
+        f"## Позиция 2 (Мотивация): {pos2}\n{canon_1_3(pos2, 'motivation')}",
+        f"## Позиция 3 (Инструмент): {pos3}\n{canon_1_3(pos3, 'instrument')}",
+        f"## Позиция 4 (Проблематика / поле анализа): {pos4}\n{canon_pos(pos4, 'POT_4_CANON')}",
+        f"## Позиция 5 (Миссия / запрос): {pos5}\n{canon_pos(pos5, 'POT_5_CANON')}",
+        f"## Позиция 6 (Результат): {pos6}\n{canon_pos(pos6, 'POT_6_CANON')}",
+    ]
+
+    return "\n\n".join(parts).strip()
+
 def generate_extended_report(openai_client, model: str, profile: dict) -> str:
     """
     Генерирует единый расширенный отчёт (как диагностика, но глубже).
