@@ -895,13 +895,10 @@ def _canon_dict_to_md(d: dict) -> str:
     return "\n".join(lines).strip() or "—"
 
 
-def build_canon_1_6_bundle_from_p9(p9: list[str]) -> dict:
+def build_canon_bundle_md_from_p9(p9: list[str]) -> str:
     """
-    p9: список из 9 потенциалов в порядке позиций 1..9.
-    Мы используем только 1..6 (ядро + второй ряд).
-    Возвращает:
-      - positions: pos1..pos6
-      - canon_texts: markdown по pos1..pos6 строго из канонов
+    Делает CANON_BUNDLE markdown строго по позициям 1–6,
+    используя глобальные словари POT_CANON_1_3 / POT_4_CANON / POT_5_CANON / POT_6_CANON.
     """
 
     def safe(x: str) -> str:
@@ -938,26 +935,56 @@ def build_canon_1_6_bundle_from_p9(p9: list[str]) -> dict:
             return _canon_dict_to_md(d)
         return "—"
 
-    return {
-        "positions": {
-            "pos1": pos1 or "—",
-            "pos2": pos2 or "—",
-            "pos3": pos3 or "—",
-            "pos4": pos4 or "—",
-            "pos5": pos5 or "—",
-            "pos6": pos6 or "—",
-        },
-        "canon_texts": {
-            "pos1": canon_1_3(pos1, "perception"),
-            "pos2": canon_1_3(pos2, "motivation"),
-            "pos3": canon_1_3(pos3, "instrument"),
-            "pos4": canon_pos(pos4, "POT_4_CANON"),
-            "pos5": canon_pos(pos5, "POT_5_CANON"),
-            "pos6": canon_pos(pos6, "POT_6_CANON"),
-        }
-    }
+    parts = [
+        f"## Позиция 1 (Восприятие): {pos1}\n{canon_1_3(pos1, 'perception')}",
+        f"## Позиция 2 (Мотивация): {pos2}\n{canon_1_3(pos2, 'motivation')}",
+        f"## Позиция 3 (Инструмент): {pos3}\n{canon_1_3(pos3, 'instrument')}",
+        f"## Позиция 4 (Проблематика / поле анализа): {pos4}\n{canon_pos(pos4, 'POT_4_CANON')}",
+        f"## Позиция 5 (Миссия / запрос): {pos5}\n{canon_pos(pos5, 'POT_5_CANON')}",
+        f"## Позиция 6 (Результат): {pos6}\n{canon_pos(pos6, 'POT_6_CANON')}",
+    ]
+    return "\n\n".join(parts).strip()
 
 
+def generate_extended_report(openai_client, model: str, profile: dict) -> str:
+    """
+    Единый расширенный отчёт:
+    - обращение на ВЫ
+    - без Точка А/Б
+    - без заданий/чек-листов/вопросов
+    - 3 ряд НЕ разбирать (только 1 фраза)
+    - опора только на канон 1–6
+    """
+
+    f = (profile or {}).get("foundation", {}) or {}
+    name = (f.get("name") or "Клиент").strip()
+    matrix_raw = (f.get("potentials_table") or "").strip()
+
+    if not matrix_raw:
+        return "Ошибка: матрица потенциалов пустая. Сначала заполните потенциалы и сохраните основу."
+
+    p9 = parse_potentials_9(matrix_raw)
+    if len(p9) < 9:
+        return (
+            "Ошибка: не удалось извлечь 9 потенциалов.\n\n"
+            "Вставьте 9 потенциалов (через запятую или нумерацией 1–9)."
+        )
+
+    matrix_md = build_matrix_md(p9)
+    canon_bundle_md = build_canon_bundle_md_from_p9(p9)
+
+    sys = build_unified_report_system_prompt()
+    user = build_unified_report_user_prompt(name=name, matrix_md=matrix_md, canon_bundle_md=canon_bundle_md)
+
+    resp = openai_client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": sys},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.45,
+    )
+    return (resp.choices[0].message.content or "").strip()
 def build_unified_report_system_prompt() -> str:
     return "\n".join([
         "# ROLE",
