@@ -1,6 +1,5 @@
-
 # =========================
-# App.py — Personal Potentials · Реализация (clean rebuild)
+#App.py — Personal Potentials · Реализация (clean rebuild)
 # =========================
 
 import os
@@ -896,14 +895,31 @@ def _canon_dict_to_md(d: dict) -> str:
     return "\n".join(lines).strip() or "—"
 
 
-def build_canon_bundle_md(pos1: str, pos2: str, pos3: str, pos4: str, pos5: str, pos6: str) -> str:
-    POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = load_spch_canon()
+def build_canon_1_6_bundle_from_p9(p9: list[str]) -> dict:
+    """
+    p9: список из 9 потенциалов в порядке позиций 1..9.
+    Мы используем только 1..6 (ядро + второй ряд).
+    Возвращает:
+      - positions: pos1..pos6
+      - canon_texts: markdown по pos1..pos6 строго из канонов
+    """
 
-    pos1, pos2, pos3, pos4, pos5, pos6 = [norm_pot_name(x) for x in [pos1,pos2,pos3,pos4,pos5,pos6]]
+    def safe(x: str) -> str:
+        return str(x or "").strip()
+
+    pos1 = safe(p9[0]) if len(p9) > 0 else ""
+    pos2 = safe(p9[1]) if len(p9) > 1 else ""
+    pos3 = safe(p9[2]) if len(p9) > 2 else ""
+    pos4 = safe(p9[3]) if len(p9) > 3 else ""
+    pos5 = safe(p9[4]) if len(p9) > 4 else ""
+    pos6 = safe(p9[5]) if len(p9) > 5 else ""
 
     def canon_1_3(pot: str, col: str) -> str:
-        pot = norm_pot_name(pot)
-        d = (POT_CANON_1_3 or {}).get(pot) or {}
+        if not pot:
+            return "—"
+        d = (globals().get("POT_CANON_1_3") or {}).get(pot)
+        if not d:
+            return "—"
         cell = d.get(col)
         if isinstance(cell, str):
             return cell.strip() or "—"
@@ -911,115 +927,172 @@ def build_canon_bundle_md(pos1: str, pos2: str, pos3: str, pos4: str, pos5: str,
             return _canon_dict_to_md(cell)
         return "—"
 
-    def canon_pos(pot: str, canon_dict: dict) -> str:
-        pot = norm_pot_name(pot)
-        d = (canon_dict or {}).get(pot)
+    def canon_pos(pot: str, dict_name: str) -> str:
+        if not pot:
+            return "—"
+        canon_dict = globals().get(dict_name) or {}
+        d = canon_dict.get(pot)
         if isinstance(d, str):
             return d.strip() or "—"
         if isinstance(d, dict):
             return _canon_dict_to_md(d)
         return "—"
 
-    parts = [
-        f"## Позиция 1 (Восприятие): {pos1}\n{canon_1_3(pos1, 'perception')}",
-        f"## Позиция 2 (Мотивация): {pos2}\n{canon_1_3(pos2, 'motivation')}",
-        f"## Позиция 3 (Инструмент): {pos3}\n{canon_1_3(pos3, 'instrument')}",
-        f"## Позиция 4 (Проблематика/поле анализа): {pos4}\n{canon_pos(pos4, POT_4_CANON)}",
-        f"## Позиция 5 (Запрос/миссия): {pos5}\n{canon_pos(pos5, POT_5_CANON)}",
-        f"## Позиция 6 (Результат): {pos6}\n{canon_pos(pos6, POT_6_CANON)}",
-    ]
-    return "\n\n".join(parts).strip()
+    return {
+        "positions": {
+            "pos1": pos1 or "—",
+            "pos2": pos2 or "—",
+            "pos3": pos3 or "—",
+            "pos4": pos4 or "—",
+            "pos5": pos5 or "—",
+            "pos6": pos6 or "—",
+        },
+        "canon_texts": {
+            "pos1": canon_1_3(pos1, "perception"),
+            "pos2": canon_1_3(pos2, "motivation"),
+            "pos3": canon_1_3(pos3, "instrument"),
+            "pos4": canon_pos(pos4, "POT_4_CANON"),
+            "pos5": canon_pos(pos5, "POT_5_CANON"),
+            "pos6": canon_pos(pos6, "POT_6_CANON"),
+        }
+    }
 
 
-def build_spch_system_prompt() -> str:
+ddef build_unified_report_system_prompt() -> str:
     return "\n".join([
-        "Ты — эксперт по СПЧ (матрица потенциалов 3x3). Пишешь по-русски.",
+        "# ROLE",
+        "Вы — эксперт по методике СПЧ / Personal Potentials (матрица 3x3).",
         "",
-        "ЖЁСТКИЕ ПРАВИЛА:",
-        "1) Пиши от ПЕРВОГО ЛИЦА (я/мне/моё).",
-        "2) Разрешено использовать только факты из CANON_BUNDLE. НЕЛЬЗЯ добавлять от себя.",
-        "3) Если данных по позиции нет в CANON_BUNDLE — так и напиши. НЕ дополняй.",
-        "4) Запрещены слова: кристалл/камень/магия/эзотерика.",
-        "5) Никаких общих фраз уровня «достигать целей». Только узнаваемые формулировки из канона.",
+        "# ЖЁСТКО",
+        "- Пишите по-русски.",
+        "- Обращение строго НА «ВЫ»: «у вас», «вам», «ваша матрица».",
+        "- Не используйте 1-е лицо (я/мне/моё) от имени клиента.",
+        "- Не эзотерика. Не диагноз. Не терапия.",
+        "- Не давать задания, инструкции, чек-листы, планы по дням.",
+        "- Не задавать вопросы для сессии.",
+        "- Не выдумывать свойства потенциалов: опора только на CANON_TEXTS из входных данных.",
+        "- Если чего-то нет в каноне — писать: «в каноне нет данных».",
         "",
-        "Формат: Markdown. Без JSON."
+        "# МАТРИЦА",
+        "- 3 ряда x 3 столбца.",
+        "- Столбцы: Восприятие / Мотивация / Инструмент.",
+        "- Ряды: 1 ряд = ядро и реализация (≈60%), 2 ряд = наполнение и социальный слой (≈30%), 3 ряд = риски/делегирование (≈10%).",
+        "",
+        "# ВАЖНО ПРО 3 РЯД",
+        "- Третий ряд НЕ разбирать и НЕ описывать (не интерпретировать позиции 7–9).",
+        "- Разрешена только 1 короткая фраза: «3 ряд — слабости/риски, держать до 10% и по возможности делегировать».",
+        "",
+        "# OUTPUT",
+        "- Вернуть один единый расширенный отчёт в Markdown.",
+        "- Без JSON, без служебных меток, без блоков <<<...>>>.",
     ]).strip()
 
 
-def generate_extended_report(openai_client, model: str, profile: dict) -> str:
-    f = (profile or {}).get("foundation", {}) or {}
-    r = (profile or {}).get("realization", {}) or {}
-
-    name = (f.get("name") or "Клиент").strip()
-    matrix_raw = (f.get("potentials_table") or "").strip()
-    point_a = (r.get("point_a") or "").strip()
-    point_b = (r.get("point_b") or "").strip()
-
-    p9 = parse_potentials_9(matrix_raw)
-    if len(p9) < 9:
-        raise RuntimeError("Не удалось извлечь 9 потенциалов. Вставь список из 9 (через запятую).")
-
-    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
-    matrix_md = build_matrix_md(p9)
-
-    canon_bundle_md = build_canon_bundle_md(pos1, pos2, pos3, pos4, pos5, pos6)
-
-    sys = build_spch_system_prompt()
-    user = "\n".join([
-        f"Имя: {name}",
+def build_unified_report_user_prompt(name: str, matrix_md: str, canon_bundle_md: str) -> str:
+    return "\n".join([
+        f"Клиент: {name}",
         "",
-        "МАТРИЦА 3x3:",
+        "МАТРИЦА 3x3 (таблица):",
         matrix_md,
         "",
-        "CANON_BUNDLE (ЕДИНСТВЕННЫЙ источник фактов):",
+        "CANON_TEXTS (выжимка по позициям 1–6):",
         canon_bundle_md,
         "",
-        "Точка А (сейчас):",
-        (point_a or "—"),
-        "",
-        "Точка Б (как хочу):",
-        (point_b or "—"),
-        "",
-        "Сделай РАСШИРЕННЫЙ ОТЧЁТ, который я читаю сама для себя.",
+        "Сформируйте один расширенный отчёт (Markdown), который клиент читает сам.",
+        "Он должен быть глубже, чем стандартный клиентский отчёт диагностики: больше ясности, больше связок, больше примеров проявления в жизни, но без заданий и без вопросов.",
+        "Обращение строго на «вы».",
         "",
         "СТРУКТУРА (строго):",
-        "## 1) Матрица и как её читать",
-        "- 6–12 строк: 60/30/10 + 3 столбца.",
+        "1) Вступление (5–10 абзацев): что показывает матрица и как её читать (60/30/10 + столбцы) + как это проявляется в реальной жизни.",
+        "2) Матрица 3x3 (оставьте таблицу как есть).",
+        "3) Первый ряд — ядро / реализация / монетизация (очень подробно):",
+        "   3.1 Восприятие (позиция 1):",
+        "       - как вы видите мир, что вы не можете не замечать (строго по канону)",
+        "       - как вы принимаете решения, когда «правильно/неправильно»",
+        "       - проявление в работе и жизни (примеры ситуаций)",
+        "   3.2 Мотивация (позиция 2):",
+        "       - что вас реально зажигает (по канону)",
+        "       - что ломает мотивацию, если этого нет в жизни (без психотерапии)",
+        "   3.3 Инструмент (позиция 3):",
+        "       - как вы создаёте результат и ценность (по канону)",
+        "       - почему важно признавать вклад и заслуги (логикой инструмента)",
+        "   3.4 Связка 1–2–3:",
+        "       - подходящие роли/форматы деятельности",
+        "       - через что растут деньги, когда вы живёте из 1 ряда",
+        "       - типичные перекосы «мимо ядра» (только логика матрицы + канон)",
+        "4) Второй ряд — наполнение / социальный слой / аудитория (подробно):",
+        "   4.1 Позиция 4 (проблематика/поле анализа): что вы легко считываете у людей и в ситуациях (по канону)",
+        "   4.2 Позиция 5 (миссия/запрос): что люди на самом деле хотят рядом с вами (по канону)",
+        "   4.3 Позиция 6 (результат): что меняется у людей после контакта с вами (по канону)",
+        "   4.4 Как 2 ряд подпитывает 1 ряд: где вы наполняетесь и почему это критично для реализации (без советов «делайте так-то»).",
+        "5) Третий ряд: одна фраза, без деталей.",
+        "6) Внутренние связки и напряжения (5–9 гипотез):",
+        "   - конфликты между столбцами/рядами, уход в социальность вместо реализации и т.п. — только логикой матрицы и каноном.",
+        "7) Итоговый портрет (12–20 строк): кто вы, что вам важно, в чём ваша сила и что для вас «свой путь».",
         "",
-        "## 2) 1 ряд (ядро / реализация / монетизация)",
-        "- Восприятие (позиция 1): 8–14 bullet-пунктов ТОЛЬКО по канону",
-        "- Мотивация (позиция 2): 8–14 bullet-пунктов ТОЛЬКО по канону",
-        "- Инструмент (позиция 3): 8–14 bullet-пунктов ТОЛЬКО по канону",
-        "- Связка 1–2–3: 12–18 строк — роли/форматы/где деньги растут",
-        "",
-        "## 3) 2 ряд (наполнение / социальный слой)",
-        "- Позиция 4: проблемы + поле анализа + hobby (из канона)",
-        "- Позиция 5: mission (из канона)",
-        "- Позиция 6: result + collective_hobby (из канона)",
-        "",
-        "## 4) 3 ряд (риски / делегирование)",
-        "- Через логику 7/8/9 + принцип 10%. НЕ додумывать свойства (канона нет).",
-        "",
-        "## 5) Почему я сейчас в точке А",
-        "- 5–8 гипотез: конфликты рядов/столбцов, уход в 2 ряд вместо 1, заслон на проявление (без терапии).",
-        "",
-        "## 6) Мост к точке Б",
-        "- 3–5 направлений действий/форматов",
-        "- Фокус на 2 недели: 7–12 маленьких шагов (без расписания по дням)",
-        "",
-        "## 7) Финальная сборка",
-        "- 12–18 строк от первого лица: кто я / что мне важно / как я хочу проявляться",
-        "",
-        "ВАЖНО: никаких добавлений не из CANON_BUNDLE."
+        "ВАЖНО:",
+        "- Никаких «кристаллов/камней». Только «потенциал».",
+        "- Не давать заданий/инструкций/чек-листов.",
+        "- Не задавать вопросов.",
+        "- Не использовать Точка А/Точка Б.",
+        "- Только канон как источник смыслов.",
     ]).strip()
 
+def generate_extended_report(openai_client, model: str, profile: dict) -> str:
+    """
+    Генерирует единый расширенный отчёт (как диагностика, но глубже).
+    - Без Точек А/Б
+    - Обращение на «ВЫ»
+    - Без заданий/чек-листов/вопросов
+    - 3 ряд НЕ разбирать (только одна фраза)
+    - Канон берётся из глобальных словарей POT_CANON_1_3 / POT_4_CANON / POT_5_CANON / POT_6_CANON
+    """
+
+    # --- safe profile reads ---
+    f = (profile or {}).get("foundation", {}) or {}
+    name = (f.get("name") or "Клиент").strip()
+    matrix_raw = (f.get("potentials_table") or "").strip()
+
+    if not matrix_raw:
+        return "Ошибка: матрица потенциалов пустая. Сначала заполните потенциалы и сохраните основу."
+
+    # --- parse 9 potentials ---
+    p9 = parse_potentials_9(matrix_raw)
+    if len(p9) < 9:
+        # если пользователь ввёл меньше 9 — не падаем, но просим корректно заполнить
+        return (
+            "Ошибка: не удалось корректно извлечь 9 потенциалов из ввода.\n\n"
+            "Пожалуйста, вставьте 9 потенциалов (можно через запятую или с нумерацией 1–9)."
+        )
+
+    pos1, pos2, pos3, pos4, pos5, pos6, pos7, pos8, pos9 = p9[:9]
+
+    # --- matrix table markdown ---
+    matrix_md = build_matrix_md(p9)
+
+    # --- canon bundle for 1–6 ---
+    # ВАЖНО: build_canon_bundle_md должен брать данные из POT_CANON_1_3 / POT_4_CANON / POT_5_CANON / POT_6_CANON
+    canon_bundle_md = build_canon_bundle_md(pos1, pos2, pos3, pos4, pos5, pos6)
+
+    # --- prompts ---
+    sys = build_unified_report_system_prompt()
+    user = build_unified_report_user_prompt(
+        name=name,
+        matrix_md=matrix_md,
+        canon_bundle_md=canon_bundle_md,
+    )
+
+    # --- OpenAI call ---
     resp = openai_client.chat.completions.create(
         model=model,
-        messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        temperature=0.35,
+        messages=[
+            {"role": "system", "content": sys},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.45,
     )
-    return (resp.choices[0].message.content or "").strip()
-    
+
+    return (resp.choices[0].message.content or "").strip()  
     # =========================
 # UI styles
 # =========================
