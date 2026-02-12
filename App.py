@@ -784,7 +784,10 @@ def load_spch_canon():
     }
 
     return POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON
-    
+
+# --- initialize canon dicts into globals (IMPORTANT) ---
+POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = load_spch_canon()
+
 # =========================
 # OpenAI helper
 # =========================
