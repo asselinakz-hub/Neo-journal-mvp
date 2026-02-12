@@ -27,7 +27,7 @@ def _s(x) -> str:
 # SPCH CANON (lazy + cached)
 # =========================
 
-@st.cache_resource
+
 def load_spch_canon():
     """
     Загружает каноны СПЧ один раз за жизнь процесса Streamlit.
