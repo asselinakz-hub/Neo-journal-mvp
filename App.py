@@ -864,6 +864,13 @@ def build_matrix_md(p9: List[str]) -> str:
 # =========================
 # Canon -> Markdown
 # =========================
+def _pot_key(p: str) -> str:
+    """
+    Нормализует имя потенциала под ключ словарей канона.
+    Убирает лишние пробелы.
+    """
+    return str(p or "").strip()
+
 def _canon_dict_to_md(d: dict) -> str:
     if not d:
         return "—"
