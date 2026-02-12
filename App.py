@@ -36,7 +36,8 @@ def load_spch_canon():
 # ----------------------------
 # SPCH CANON (global access)
 # ----------------------------
-    POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = load_spch_canon()
+@st.cache_resource
+def load_spch_canon():
     def _s(x) -> str:
         return (str(x or "").strip())
 
@@ -637,6 +638,8 @@ def load_spch_canon():
 
     return POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON
 
+# Глобальные переменные канона (доступны везде в файле)
+POT_CANON_1_3, POT_4_CANON, POT_5_CANON, POT_6_CANON = load_spch_canon()
 
 # =========================
 # OpenAI helper
