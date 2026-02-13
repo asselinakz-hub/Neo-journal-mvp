@@ -1508,11 +1508,33 @@ def build_focus_skeleton(point_a: str, point_b: str, top_potentials: list[str]) 
 
 def call_llm(prompt: str) -> str:
     """
-    ВСТАВЬ СЮДА свой реальный вызов LLM.
-    Если пока нет — оставь как есть, система будет работать без LLM (fallback ниже).
+    Реальный вызов OpenAI.
+    Возвращает СТРОГО строку с JSON (как попросили в prompt).
     """
-    # Example fallback (no LLM configured)
-    return ""
+    client = get_openai_client()
+    if not client:
+        return ""
+
+    # можешь поменять модель на любую из твоего selectbox (gpt-4o-mini и т.д.)
+    model = st.session_state.get("llm_model", "gpt-4o-mini")
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Верни строго JSON. Без markdown. Без пояснений. Без лишнего текста."
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.35,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        # чтобы не падало — просто уходим в fallback
+        st.warning(f"LLM недоступен, использую fallback. Причина: {e}")
+        return ""
 
 
 def build_actions_fallback(skeleton: dict) -> list[dict]:
@@ -1790,6 +1812,12 @@ def realization_tab(profile: dict):
             save_profile_state()
             st.success("Сохранено ✅")
 
+    st.session_state["llm_model"] = st.selectbox(
+        "LLM модель для фокусов",
+        ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"],
+        index=0,
+        key="llm_model_select"
+    )
     with cols[1]:
         gen_focus = st.button(
             "✨ Сгенерировать 3 фокуса (скелет + душа)",
