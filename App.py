@@ -1271,12 +1271,6 @@ def save_profile_state():
 
 def header_bar():
     st.markdown(f"# {APP_TITLE}")
-    st.markdown(
-        '<span class="pp-chip">💠 Personal Potentials</span>'
-        '<span class="pp-chip">Навигация</span>'
-        '<span class="pp-chip">Конструктор действий</span>',
-        unsafe_allow_html=True,
-    )
     st.write("")
 
 
