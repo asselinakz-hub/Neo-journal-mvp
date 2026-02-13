@@ -1506,36 +1506,34 @@ def build_focus_skeleton(point_a: str, point_b: str, top_potentials: list[str]) 
 
 # ---------- 2) LLM (ДУША) + СТРУКТУРНЫЙ ВЫХОД ----------
 
-def call_llm(prompt: str) -> str:
+def call_llm(prompt: str, model: str = "gpt-4o-mini", temperature: float = 0.35) -> str:
     """
-    Реальный вызов OpenAI.
-    Возвращает СТРОГО строку с JSON (как попросили в prompt).
+    Реальный вызов OpenAI. Возвращает ТОЛЬКО текст ответа модели.
+    Мы ожидаем строгий JSON, поэтому дополнительно чистим возможные ```...``` обёртки.
     """
     client = get_openai_client()
     if not client:
         return ""
 
-    # можешь поменять модель на любую из твоего selectbox (gpt-4o-mini и т.д.)
-    model = st.session_state.get("llm_model", "gpt-4o-mini")
-
     try:
         resp = client.chat.completions.create(
             model=model,
             messages=[
-                {
-                    "role": "system",
-                    "content": "Верни строго JSON. Без markdown. Без пояснений. Без лишнего текста."
-                },
+                {"role": "system", "content": "Верни строго JSON. Без markdown. Без пояснений."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.35,
+            temperature=temperature,
         )
-        return (resp.choices[0].message.content or "").strip()
-    except Exception as e:
-        # чтобы не падало — просто уходим в fallback
-        st.warning(f"LLM недоступен, использую fallback. Причина: {e}")
-        return ""
+        text = (resp.choices[0].message.content or "").strip()
 
+        # если модель вдруг завернула в ```json ... ```
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I).strip()
+        text = re.sub(r"\s*```$", "", text).strip()
+
+        return text
+
+    except Exception:
+        return ""
 
 def build_actions_fallback(skeleton: dict) -> list[dict]:
     """
@@ -1676,7 +1674,8 @@ OUTPUT FORMAT: строго JSON, без markdown, без пояснений:
 }}
 """
 
-    raw = call_llm(prompt)
+    model = st.session_state.get("focus_llm_model", "gpt-4o-mini")
+    raw = call_llm(prompt, model=model, temperature=0.35)
 
     # Если LLM не вернул ничего — fallback
     if not raw or len(raw.strip()) < 5:
@@ -1692,7 +1691,10 @@ OUTPUT FORMAT: строго JSON, без markdown, без пояснений:
                 for f in skeleton["focuses"]
             ]
         }
-
+    # вытащим первый JSON-объект даже если модель добавила текст
+    m = re.search(r"\{.*\}", raw, flags=re.S)
+    if m:
+        raw = m.group(0).strip()
     # Попытка распарсить JSON
     try:
         data = json.loads(raw)
@@ -1823,6 +1825,14 @@ def realization_tab(profile: dict):
         index=0,
         key="llm_model_select"
     )
+    
+    st.selectbox(
+        "LLM модель для фокусов",
+        ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"],
+        index=0,
+        key="focus_llm_model"
+    )
+    
     with cols[1]:
         gen_focus = st.button(
             "✨ Сгенерировать 3 фокуса (скелет + душа)",
