@@ -1398,22 +1398,357 @@ def foundation_tab(profile: dict):
         st.markdown("### Твой расширенный отчёт")
         st.markdown(lib["extended_report_md"])
 
+# =========================
+#  SKELЕТ + DUSHA (DROP-IN)
+#  Вставь ЭТО вместо старой генерации фокусов (внутри твоей вкладки "Реализация")
+# =========================
+
+import json
+import re
+import streamlit as st
+
+
+# ---------- 1) ЖЁСТКАЯ КЛАССИФИКАЦИЯ (СКЕЛЕТ) ----------
+
+def _norm(s: str) -> str:
+    return (s or "").strip().lower()
+
+def detect_goal_type(point_b: str) -> str:
+    t = _norm(point_b)
+
+    # самореализация / смысл
+    if any(x in t for x in ["реализ", "своё дело", "предназнач", "смысл", "на своём месте", "дело жизни"]):
+        return "self_realization"
+
+    # деньги / доход
+    if any(x in t for x in ["деньг", "доход", "зарабат", "монетизац", "финанс", "стабильный доход"]):
+        return "money"
+
+    # публичность / влияние
+    if any(x in t for x in ["популяр", "сцена", "публич", "узнаваем", "влияние", "аудитори"]):
+        return "visibility"
+
+    # стабильность / спокойствие
+    if any(x in t for x in ["спокойств", "стабил", "устойчив", "безопасн", "опора", "уверен"]):
+        return "stability"
+
+    return "growth"
+
+
+def detect_state_type(point_a: str) -> str:
+    t = _norm(point_a)
+
+    if any(x in t for x in ["не работаю", "без работы", "в поиске"]):
+        return "pause"
+
+    if any(x in t for x in ["выгор", "устал", "нет сил", "апат", "нет энергии"]):
+        return "burnout"
+
+    if any(x in t for x in ["хаос", "не понимаю", "разброд", "не знаю куда", "растерян"]):
+        return "confusion"
+
+    return "active"
+
+
+def map_focus_titles(goal_type: str, top_potentials: list[str]) -> list[dict]:
+    """
+    Возвращает 3 фокуса как структуру (без текста-души).
+    Учитывает цель + топ-3 потенциала.
+    """
+    p1 = top_potentials[0] if len(top_potentials) > 0 else "Потенциал 1"
+    p2 = top_potentials[1] if len(top_potentials) > 1 else "Потенциал 2"
+    p3 = top_potentials[2] if len(top_potentials) > 2 else "Потенциал 3"
+
+    # Базовые "рамки" — можно расширять по твоему каталогу
+    # Важно: это именно рамка/смысл, НЕ готовый текст "из книги"
+    if goal_type == "self_realization":
+        titles = [
+            f"Смысл, стратегия и упаковка идеи ({p1})",
+            f"Проявленность, образ и сцена ({p2})",
+            f"Система, деньги и управление ресурсом ({p3})",
+        ]
+    elif goal_type == "money":
+        titles = [
+            f"Монетизация и продуктовая логика ({p1})",
+            f"Система действий и дисциплина дохода ({p2})",
+            f"Упаковка ценности и продажи без давления ({p3})",
+        ]
+    elif goal_type == "visibility":
+        titles = [
+            f"Образ, сцена и смелость проявления ({p1})",
+            f"Контент/продукт, который цепляет ({p2})",
+            f"Система: регулярность, воронка, деньги ({p3})",
+        ]
+    elif goal_type == "stability":
+        titles = [
+            f"Опора и бережная структура дня ({p1})",
+            f"Смысл и ясность направления ({p2})",
+            f"Финансовая база и контроль ресурсов ({p3})",
+        ]
+    else:  # growth
+        titles = [
+            f"Ясность направления и приоритеты ({p1})",
+            f"Проявление и действие малыми шагами ({p2})",
+            f"Система и закрепление результата ({p3})",
+        ]
+
+    return [
+        {"id": 1, "title": titles[0], "owner": p1, "role": "main", "weight": 60},
+        {"id": 2, "title": titles[1], "owner": p2, "role": "support", "weight": 30},
+        {"id": 3, "title": titles[2], "owner": p3, "role": "stabilize", "weight": 10},
+    ]
+
+
+def build_focus_skeleton(point_a: str, point_b: str, top_potentials: list[str]) -> dict:
+    goal_type = detect_goal_type(point_b)
+    state_type = detect_state_type(point_a)
+
+    focuses = map_focus_titles(goal_type, top_potentials)
+
+    return {
+        "point_a": point_a,
+        "point_b": point_b,
+        "goal_type": goal_type,
+        "state_type": state_type,
+        "focuses": focuses,
+    }
+
+
+# ---------- 2) LLM (ДУША) + СТРУКТУРНЫЙ ВЫХОД ----------
+
+def call_llm(prompt: str) -> str:
+    """
+    ВСТАВЬ СЮДА свой реальный вызов LLM.
+    Если пока нет — оставь как есть, система будет работать без LLM (fallback ниже).
+    """
+    # Example fallback (no LLM configured)
+    return ""
+
+
+def build_actions_fallback(skeleton: dict) -> list[dict]:
+    """
+    Если LLM не подключён, даём адекватные действия по рамке.
+    Это НЕ "зашитый текст из книги", а безопасный базовый план.
+    """
+    goal_type = skeleton["goal_type"]
+    state_type = skeleton["state_type"]
+
+    base = []
+
+    # Действия формируются по типу цели/состояния + по роли фокуса
+    for f in skeleton["focuses"]:
+        if f["role"] == "main":
+            a1 = "Сформулировать одну ключевую идею: что вы несёте людям и зачем."
+            a2 = "Упаковать идею в простую структуру: проблема → подход → результат."
+            a3 = "Собрать линию «идея → ценность → предложение» (1 продукт/1 формат)."
+        elif f["role"] == "support":
+            a1 = "Усилить подачу: образ, тон, роль, эмоциональная нота."
+            a2 = "Сделать 1 единицу контента/продукта, которая вызывает отклик (не идеал)."
+            a3 = "Создать формат проявления: эфир/встреча/съёмка/мини-событие."
+        else:  # stabilize
+            a1 = "Собрать простую фин.модель: что продаёте, цена, частота, цель/месяц."
+            a2 = "Настроить систему действий: роли, процессы, расписание недели."
+            a3 = "Упростить монетизацию: один продукт → одна воронка → одно действие в день."
+
+        # если состояние "pause/burnout/confusion" — делаем мягче шаги
+        if state_type in ["pause", "burnout", "confusion"]:
+            a1 = "Сделать микро-версию: 20 минут, без перфекционизма."
+            # оставим остальные как есть (они и так мягкие)
+
+        base.append({
+            "focus_id": f["id"],
+            "focus_title": f["title"],
+            "actions": [a1, a2, a3]
+        })
+
+    return base
+
+
+def build_soul_and_actions(skeleton: dict) -> dict:
+    """
+    Просим LLM:
+    - короткое "попадание" (душа)
+    - 3 фокуса (можно оставить те же)
+    - 9 действий (уникально под Точку А/Б)
+    Формат ответа: JSON.
+    """
+
+    focuses_for_prompt = [
+        {"id": f["id"], "title": f["title"], "role": f["role"], "weight": f["weight"], "owner": f["owner"]}
+        for f in skeleton["focuses"]
+    ]
+
+    prompt = f"""
+Ты стратег по реализации личности в системе потенциалов.
+
+Входные данные (строгие):
+Точка А: {skeleton['point_a']}
+Точка Б: {skeleton['point_b']}
+Тип цели: {skeleton['goal_type']}
+Тип состояния: {skeleton['state_type']}
+Фокусы-рамки (их не ломай, можно слегка уточнить формулировки, но сохрани 3 фокуса и веса 60/30/10):
+{json.dumps(focuses_for_prompt, ensure_ascii=False)}
+
+Задача:
+1) Напиши "душу" — 6–10 предложений, чтобы человек почувствовал: "да, это про меня".
+   Тон: живо, по-человечески, без пафоса, без клише "не про..., а про...".
+2) Для каждого фокуса сгенерируй 3 действия (итого 9). 
+   Учитывай Точку А и Точку Б. Действия должны быть простые, проверяемые, без перегруза.
+
+Формат ответа СТРОГО JSON (без markdown, без пояснений):
+{{
+  "soul_text": "...",
+  "focuses": [
+    {{
+      "id": 1,
+      "title": "...",
+      "weight": 60,
+      "actions": ["...", "...", "..."]
+    }},
+    ...
+  ]
+}}
+"""
+
+    raw = call_llm(prompt)
+
+    # Если LLM не вернул ничего — fallback
+    if not raw or len(raw.strip()) < 5:
+        return {
+            "soul_text": "",
+            "focuses": [
+                {
+                    "id": f["id"],
+                    "title": f["title"],
+                    "weight": f["weight"],
+                    "actions": build_actions_fallback(skeleton)[f["id"] - 1]["actions"],
+                }
+                for f in skeleton["focuses"]
+            ]
+        }
+
+    # Попытка распарсить JSON
+    try:
+        data = json.loads(raw)
+        # минимальная валидация
+        if "focuses" not in data or not isinstance(data["focuses"], list) or len(data["focuses"]) != 3:
+            raise ValueError("Invalid focuses")
+        return data
+    except Exception:
+        # Если LLM вернул мусор — fallback
+        fb = build_actions_fallback(skeleton)
+        return {
+            "soul_text": "",
+            "focuses": [
+                {
+                    "id": f["focus_id"],
+                    "title": f["focus_title"],
+                    "weight": skeleton["focuses"][f["focus_id"] - 1]["weight"],
+                    "actions": f["actions"],
+                }
+                for f in fb
+            ]
+        }
+
+
+# ---------- 3) UI ВСТАВКА (ЗАМЕНЯЕТ СТАРУЮ ГЕНЕРАЦИЮ) ----------
+
+# Предполагаю, что эти переменные у тебя уже есть из формы:
+# point_a = st.session_state.get("point_a", "") или из st.text_area
+# point_b = st.session_state.get("point_b", "")
+# top_potentials = [...]  # например ["Аметист", "Гранат", "Цитрин"]
+
+# Если у тебя они называются иначе — просто подставь свои имена ниже.
+
+if "point_a" not in st.session_state:
+    st.session_state.point_a = ""
+if "point_b" not in st.session_state:
+    st.session_state.point_b = ""
+if "top_potentials" not in st.session_state:
+    st.session_state.top_potentials = []
+
+
+# Твои поля (если они уже есть — НЕ дублируй, а оставь только блок кнопки ниже)
+# st.session_state.point_a = st.text_area("Точка А (сейчас)", st.session_state.point_a)
+# st.session_state.point_b = st.text_area("Точка Б (как хочу)", st.session_state.point_b)
+
+# !!! ВАЖНО: оставь свои текущие поля ввода. Ниже — именно блок генерации/вывода.
+
+if st.button("✨ Сгенерировать 3 фокуса (скелет + душа)", use_container_width=True):
+    point_a = st.session_state.point_a
+    point_b = st.session_state.point_b
+    top_potentials = st.session_state.top_potentials
+
+    # 1) СКЕЛЕТ
+    skeleton = build_focus_skeleton(point_a, point_b, top_potentials)
+
+    # 2) ДУША + 9 ДЕЙСТВИЙ
+    result = build_soul_and_actions(skeleton)
+
+    # Сохраняем в session_state, чтобы можно было дальше "Сохранить фокусы"
+    st.session_state.generated_skeleton = skeleton
+    st.session_state.generated_result = result
+
+
+# Отрисовка (если уже сгенерили)
+if "generated_result" in st.session_state:
+    result = st.session_state.generated_result
+
+    # Душа (опционально)
+    if result.get("soul_text"):
+        st.markdown("### ✨ Почему это ваш путь")
+        st.write(result["soul_text"])
+
+    st.markdown("### 🎯 3 фокуса и 9 действий")
+
+    for f in result["focuses"]:
+        st.markdown(f"## Фокус {f['id']}")
+        st.text_input(f"Фокус {f['id']}: название", value=f["title"], key=f"focus_{f['id']}_title")
+
+        # 3 действия
+        for i, act in enumerate(f["actions"], start=1):
+            st.text_input(
+                f"Фокус {f['id']}: действие {i}",
+                value=act,
+                key=f"focus_{f['id']}_action_{i}"
+            )
+
+    # Кнопка сохранения (ты можешь завязать на свой сохранитель)
+    if st.button("💾 Сохранить фокусы", use_container_width=True):
+        # Здесь подцепи свой существующий save_to_db/save_to_file
+        st.success("Фокусы сохранены (подключи тут свою функцию сохранения).")
 
 def realization_tab(profile: dict):
+
     profile = ensure_profile_schema(profile)
+
     f = profile["foundation"]
     r = profile["realization"]
 
     st.markdown("## 1) Реализация")
 
+    # ---------- Точки ----------
     c1, c2 = st.columns(2)
+
     with c1:
-        r["point_a"] = st.text_area("Точка А (сейчас)", value=r.get("point_a",""), height=140)
+        r["point_a"] = st.text_area(
+            "Точка А (сейчас)",
+            value=r.get("point_a", ""),
+            height=140
+        )
+
     with c2:
-        r["point_b"] = st.text_area("Точка Б (как хочу)", value=r.get("point_b",""), height=140)
+        r["point_b"] = st.text_area(
+            "Точка Б (как хочу)",
+            value=r.get("point_b", ""),
+            height=140
+        )
 
     st.write("")
+
+    # ---------- Кнопки ----------
     cols = st.columns(2)
+
     with cols[0]:
         if st.button("💾 Сохранить точки", use_container_width=True):
             st.session_state.profile = profile
@@ -1421,53 +1756,130 @@ def realization_tab(profile: dict):
             st.success("Сохранено ✅")
 
     with cols[1]:
-        gen_focus = st.button("✨ Сгенерировать 3 фокуса (из 1 ряда)", use_container_width=True)
+        gen_focus = st.button(
+            "✨ Сгенерировать 3 фокуса (скелет + душа)",
+            use_container_width=True
+        )
 
+    # ---------- ГЕНЕРАЦИЯ ----------
     if gen_focus:
+
         if not (f.get("potentials_table") or "").strip():
             st.error("Сначала заполните потенциалы во вкладке «0) Основа».")
         else:
-            p9 = parse_potentials_9(f.get("potentials_table",""))
-            focuses = build_realization_focus_from_p9(p9)
-            r["focuses"] = focuses
+
+            # 1️⃣ Берём потенциалы как раньше
+            p9 = parse_potentials_9(f.get("potentials_table", ""))
+
+            # Берём топ-3
+            top_potentials = [
+                p9.get("p1_name"),
+                p9.get("p2_name"),
+                p9.get("p3_name"),
+            ]
+
+            point_a = r.get("point_a", "")
+            point_b = r.get("point_b", "")
+
+            # 2️⃣ СКЕЛЕТ
+            skeleton = build_focus_skeleton(
+                point_a=point_a,
+                point_b=point_b,
+                top_potentials=top_potentials
+            )
+
+            # 3️⃣ ДУША + ДЕЙСТВИЯ
+            result = build_soul_and_actions(skeleton)
+
+            # ---------- КОНВЕРТАЦИЯ В ТВОЙ ФОРМАТ ----------
+            focuses_out = {}
+
+            for i, fcs in enumerate(result["focuses"], start=1):
+
+                focuses_out[f"focus{i}"] = {
+                    "title": fcs["title"],
+                    "actions": fcs["actions"]
+                }
+
+            r["focuses"] = focuses_out
+
+            # Можно сохранить soul текст отдельно если захочешь потом выводить
+            r["soul_text"] = result.get("soul_text", "")
+
             st.session_state.profile = profile
             save_profile_state()
+
             st.success("Фокусы собраны ✅")
 
+    # ---------- ВЫВОД ----------
     st.divider()
+
+    # Душа (если есть)
+    if r.get("soul_text"):
+        st.markdown("### ✨ Почему это ваш путь")
+        st.write(r["soul_text"])
+
     st.subheader("🎯 3 фокуса и 9 действий")
 
     focuses = r.get("focuses") or {}
+
     if not focuses or not (focuses.get("focus1") or {}).get("title"):
         st.info("Нажмите «Сгенерировать 3 фокуса», чтобы заполнить блок.")
         return
 
-    for key, label in [("focus1","Фокус 1"), ("focus2","Фокус 2"), ("focus3","Фокус 3")]:
-        block = focuses.get(key) or {"title":"", "actions":[]}
+    # ---------- РЕДАКТИРОВАНИЕ ----------
+    for key, label in [
+        ("focus1", "Фокус 1"),
+        ("focus2", "Фокус 2"),
+        ("focus3", "Фокус 3")
+    ]:
+
+        block = focuses.get(key) or {"title": "", "actions": []}
+
         st.markdown(f"### {label}")
 
-        block["title"] = st.text_input(f"{label}: название", value=block.get("title",""), key=f"real_{key}_title")
+        block["title"] = st.text_input(
+            f"{label}: название",
+            value=block.get("title", ""),
+            key=f"real_{key}_title"
+        )
 
         acts = block.get("actions") or []
+
         while len(acts) < 3:
             acts.append("")
+
         acts = acts[:3]
 
-        acts[0] = st.text_input(f"{label}: действие 1", value=acts[0], key=f"real_{key}_a1")
-        acts[1] = st.text_input(f"{label}: действие 2", value=acts[1], key=f"real_{key}_a2")
-        acts[2] = st.text_input(f"{label}: действие 3", value=acts[2], key=f"real_{key}_a3")
+        acts[0] = st.text_input(
+            f"{label}: действие 1",
+            value=acts[0],
+            key=f"real_{key}_a1"
+        )
+
+        acts[1] = st.text_input(
+            f"{label}: действие 2",
+            value=acts[1],
+            key=f"real_{key}_a2"
+        )
+
+        acts[2] = st.text_input(
+            f"{label}: действие 3",
+            value=acts[2],
+            key=f"real_{key}_a3"
+        )
 
         block["actions"] = acts
         focuses[key] = block
 
         st.write("")
 
+    # ---------- СОХРАНЕНИЕ ----------
     if st.button("💾 Сохранить фокусы", use_container_width=True):
         r["focuses"] = focuses
         st.session_state.profile = profile
         save_profile_state()
         st.success("Фокусы сохранены ✅")
-
 
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
