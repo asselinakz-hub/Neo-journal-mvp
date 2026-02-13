@@ -1851,21 +1851,49 @@ def realization_tab(profile: dict):
         block = focuses.get(key) or {"title":"", "actions":[]}
         st.markdown(f"### {label}")
 
-        block["title"] = st.text_input(
-            f"{label}: название",
-            value=block.get("title",""),
-            key=f"real_{key}_title"
+        st.markdown(f"### {label}")
+        st.caption("Название фокуса")
+        block["title"] = st.text_area(
+            label=f"{label}: название",
+            value=block.get("title", ""),
+            height=70,
+            key=f"real_{key}_title",
+            label_visibility="collapsed"
         )
 
+        st.markdown("**Действия (3):**")
         acts = block.get("actions") or []
         while len(acts) < 3:
             acts.append("")
         acts = acts[:3]
 
-        acts[0] = st.text_input(f"{label}: действие 1", value=acts[0], key=f"real_{key}_a1")
-        acts[1] = st.text_input(f"{label}: действие 2", value=acts[1], key=f"real_{key}_a2")
-        acts[2] = st.text_input(f"{label}: действие 3", value=acts[2], key=f"real_{key}_a3")
+        acts[0] = st.text_area(
+            label=f"{label}: действие 1",
+            value=acts[0],
+            height=90,
+            key=f"real_{key}_a1",
+            label_visibility="collapsed"
+        )
 
+        acts[1] = st.text_area(
+            label=f"{label}: действие 2",
+            value=acts[1],
+            height=90,
+            key=f"real_{key}_a2",
+            label_visibility="collapsed"
+        )
+
+        acts[2] = st.text_area(
+            label=f"{label}: действие 3",
+            value=acts[2],
+            height=90,
+            key=f"real_{key}_a3",
+            label_visibility="collapsed"
+        )
+
+        block["actions"] = acts
+        focuses[key] = block
+        st.divider()
         block["actions"] = acts
         focuses[key] = block
         st.write("")
@@ -1876,9 +1904,12 @@ def realization_tab(profile: dict):
         save_profile_state()
         st.success("Фокусы сохранены ✅")
         
+from datetime import date
+import hashlib
+import streamlit as st
+
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
-    f = profile["foundation"]
     r = profile["realization"]
     t = profile["today"]
 
@@ -1891,13 +1922,15 @@ def today_tab(profile: dict):
     focuses = (r.get("focuses") or {})
     all_actions = []
 
-    for k in ["focus1","focus2","focus3"]:
-        blk = focuses.get(k) or {}
-        title = (blk.get("title") or "").strip()
+    # Собираем ТОЛЬКО действия (без названий фокусов)
+    for fk in ["focus1", "focus2", "focus3"]:
+        blk = focuses.get(fk) or {}
         for i, a in enumerate(blk.get("actions") or [], start=1):
             a = (a or "").strip()
             if a:
-                all_actions.append(f"{title} — {a}" if title else a)
+                # стабильный id (чтобы одинаковые тексты не конфликтовали)
+                action_id = f"{fk}:{i}:{a}"
+                all_actions.append((action_id, a))
 
     if not all_actions:
         st.info("Сначала заполните фокусы во вкладке «Реализация».")
@@ -1905,11 +1938,18 @@ def today_tab(profile: dict):
 
     st.caption("Отметьте 3–5 действий на день. Это и есть ваш «идеальный день» — без перегруза.")
 
-    # чеклисты
-    for a in all_actions:
-        done = bool(day["actions"].get(a, False))
-        new_val = st.checkbox(a, value=done)
-        day["actions"][a] = new_val
+    # чеклисты (показываем только текст действия)
+    for action_id, label in all_actions:
+        # ключ для Streamlit (короткий и уникальный)
+        h = hashlib.md5(action_id.encode("utf-8")).hexdigest()[:10]
+        cb_key = f"today_{today_key}_{h}"
+
+        done = bool(day["actions"].get(action_id, False))
+        new_val = st.checkbox(label, value=done, key=cb_key)
+        day["actions"][action_id] = new_val
+
+    # если ты где-то сохраняешь профиль кнопкой — оставь как есть
+    # (или добавь кнопку сохранения тут, если хочешь)
 
     st.write("")
     # хобби
