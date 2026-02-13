@@ -67,6 +67,12 @@ def default_profile() -> Dict[str, Any]:
         "realization": {
             "point_a": "",
             "point_b": "",
+        "focuses": {
+             "focus1": {"title": "", "actions": []},
+             "focus2": {"title": "", "actions": []},
+             "focus3": {"title": "", "actions": []},
+        },
+        "hobbies_selected": [],
             "weekly_focus": "",
             "focus_explainer": "",
             "action_blocks": action_blocks,
@@ -97,6 +103,12 @@ def ensure_profile_schema(p: dict) -> dict:
     p.setdefault("realization", {})
     p["realization"].setdefault("point_a", "")
     p["realization"].setdefault("point_b", "")
+    p["realization"].setdefault("focuses", {
+      "focus1": {"title": "", "actions": []},
+      "focus2": {"title": "", "actions": []},
+      "focus3": {"title": "", "actions": []},
+    })
+    p["realization"].setdefault("hobbies_selected", [])
     p["realization"].setdefault("weekly_focus", "")
     p["realization"].setdefault("focus_explainer", "")
     p["realization"].setdefault("action_blocks", [
@@ -796,6 +808,74 @@ def build_matrix_md(p9: List[str]) -> str:
     md.append(f"| 3 (риски / 10%) | {pos7} | {pos8} | {pos9} |")
     return "\n".join(md)
 
+def build_realization_focus_from_p9(p9: list[str]) -> dict:
+    """
+    3 фокуса из 1 ряда (позиции 1–3). Жёсткий каталог: не плывёт.
+    Возвращает:
+      {"focus1": {"title":..., "actions":[...]}, "focus2":..., "focus3":...}
+    """
+    pos1, pos2, pos3 = (p9[0] or "").strip(), (p9[1] or "").strip(), (p9[2] or "").strip()
+
+    focus_map = {
+        "Аметист": {"title": "Смысл, стратегия и упаковка идей", "actions": [
+            "Сформулировать 1 ключевую идею/концепцию и держать её центральной",
+            "Упаковать идею в понятную структуру (логика, язык, тезисы)",
+            "Выстроить линию «идея → ценность → предложение» без лишних тем",
+        ]},
+        "Сапфир": {"title": "Глубина, знание и ясность мышления", "actions": [
+            "Создать собственную систему смыслов/модель (как вы объясняете мир)",
+            "Систематизировать знания в понятные блоки (схемы, принципы)",
+            "Проявляться через смыслы: объяснять сложное простыми словами",
+        ]},
+        "Гелиодор": {"title": "Голос, публичность и рост аудитории", "actions": [
+            "Регулярно говорить: видео/голос/эфиры как основной канал",
+            "Продвигать 1–2 ключевых смысла через повторяемую подачу",
+            "Создавать сообщество вокруг идеи (рубрики, поводы, площадка)",
+        ]},
+        "Гранат": {"title": "Эмоция, образ и сцена", "actions": [
+            "Усилить подачу: роль/образ/эмоциональная выразительность",
+            "Делать продукт/контент, который вызывает чувство и вовлекает",
+            "Создавать события/форматы, где вы — центр энергии и впечатления",
+        ]},
+        "Изумруд": {"title": "Красота, гармония и атмосфера результата", "actions": [
+            "Собирать эстетическую среду (визуал, стиль, подача)",
+            "Создавать «эмоционально красивый» результат для людей",
+            "Держать качество/вкус/экологичность как стандарт",
+        ]},
+        "Рубин": {"title": "Драйв, драматургия и управление эмоцией", "actions": [
+            "Делать проекты с динамикой: эффект, напряжение/разрядка",
+            "Управлять эмоцией аудитории через сценарий и подачу",
+            "Выбирать задачи, где нужна смелость, скорость и энергия запуска",
+        ]},
+        "Цитрин": {"title": "Система, деньги и управление ресурсом", "actions": [
+            "Собрать финансовую модель: что продаёте, за что платят, как растёт чек",
+            "Настроить систему действий: роли, процессы, расписание, контроль",
+            "Упростить монетизацию: один продукт → одна воронка → один канал",
+        ]},
+        "Янтарь": {"title": "Порядок, устойчивость и функциональность", "actions": [
+            "Навести порядок в структуре: правила, режим, опоры",
+            "Сделать понятную систему: инструкции, алгоритм «как работает»",
+            "Держать стабильность: повторяемость и предсказуемый результат",
+        ]},
+        "Шунгит": {"title": "Форма, практика и сообщество", "actions": [
+            "Делать через практику: действие важнее размышлений",
+            "Собирать близкий круг: комьюнити, совместные активности",
+            "Выбирать прикладные форматы: телесный/физический результат",
+        ]},
+    }
+
+    def pick(pot: str) -> dict:
+        pot = (pot or "").strip()
+        return focus_map.get(pot, {
+            "title": f"Фокус реализации потенциала {pot or '—'}",
+            "actions": [
+                "Сформулировать, как это проявляется в вашей жизни",
+                "Выбрать 1–2 формата, где это даёт результат",
+                "Закрепить регулярностью без перегруза",
+            ]
+        })
+
+    return {"focus1": pick(pos1), "focus2": pick(pos2), "focus3": pick(pos3)}
 
 # =========================
 # Canon -> Unified Report (NO DUPLICATES)
@@ -1064,6 +1144,76 @@ def generate_extended_report(openai_client, model: str, profile: dict) -> str:
     )
     return (resp.choices[0].message.content or "").strip()
 # =========================
+
+def get_hobby_suggestions_from_p9(p9: list[str]) -> dict:
+    """
+    Берём хобби из канона:
+      - pos4: POT_4_CANON[pot]["hobby"]
+      - pos6: POT_6_CANON[pot]["collective_hobby"]
+    Возвращаем {"solo": [...], "collective": [...]}
+    """
+    pos4 = (p9[3] or "").strip()
+    pos6 = (p9[5] or "").strip()
+
+    solo = []
+    collective = []
+
+    d4 = (POT_4_CANON or {}).get(pos4) or {}
+    solo = [str(x).strip() for x in (d4.get("hobby") or []) if str(x).strip()]
+
+    d6 = (POT_6_CANON or {}).get(pos6) or {}
+    collective = [str(x).strip() for x in (d6.get("collective_hobby") or []) if str(x).strip()]
+
+    # уникальность
+    solo_u = []
+    seen = set()
+    for x in solo:
+        k = x.lower()
+        if k not in seen:
+            solo_u.append(x); seen.add(k)
+
+    collective_u = []
+    seen = set()
+    for x in collective:
+        k = x.lower()
+        if k not in seen:
+            collective_u.append(x); seen.add(k)
+
+    return {"solo": solo_u, "collective": collective_u}
+
+
+def hobbies_tab(profile: dict):
+    profile = ensure_profile_schema(profile)
+    f = profile["foundation"]
+    r = profile["realization"]
+
+    st.markdown("## Хобби (поддержка 2 ряда)")
+    if not (f.get("potentials_table") or "").strip():
+        st.info("Сначала заполните потенциалы во вкладке «0) Основа».")
+        return
+
+    p9 = parse_potentials_9(f.get("potentials_table",""))
+    sugg = get_hobby_suggestions_from_p9(p9)
+
+    st.caption("Подсказки хобби подтягиваются из канона: позиция 4 (личные) и позиция 6 (коллективные).")
+
+    options = []
+    options += [f"Личное: {x}" for x in sugg["solo"]]
+    options += [f"Коллективное: {x}" for x in sugg["collective"]]
+
+    selected = st.multiselect(
+        "Выберите 2–6 хобби (они будут предлагаться в «Сегодня» как ресурс/наполнение)",
+        options=options,
+        default=r.get("hobbies_selected", []),
+    )
+
+    if st.button("💾 Сохранить хобби", use_container_width=True):
+        r["hobbies_selected"] = selected
+        st.session_state.profile = profile
+        save_profile_state()
+        st.success("Сохранено ✅")
+
+
 def inject_css():
     st.markdown(
         """
@@ -1251,32 +1401,156 @@ def foundation_tab(profile: dict):
 
 def realization_tab(profile: dict):
     profile = ensure_profile_schema(profile)
+    f = profile["foundation"]
     r = profile["realization"]
-    today = date.today()
-    week_start = monday_of_week(today).isoformat()
-    if r.get("week_start") != week_start:
-        r["week_start"] = week_start
-        st.session_state.profile = profile
-        save_profile_state()
 
     st.markdown("## 1) Реализация")
+
     c1, c2 = st.columns(2)
     with c1:
         r["point_a"] = st.text_area("Точка А (сейчас)", value=r.get("point_a",""), height=140)
     with c2:
         r["point_b"] = st.text_area("Точка Б (как хочу)", value=r.get("point_b",""), height=140)
 
-    if st.button("💾 Сохранить", use_container_width=True):
+    st.write("")
+    cols = st.columns(2)
+    with cols[0]:
+        if st.button("💾 Сохранить точки", use_container_width=True):
+            st.session_state.profile = profile
+            save_profile_state()
+            st.success("Сохранено ✅")
+
+    with cols[1]:
+        gen_focus = st.button("✨ Сгенерировать 3 фокуса (из 1 ряда)", use_container_width=True)
+
+    if gen_focus:
+        if not (f.get("potentials_table") or "").strip():
+            st.error("Сначала заполните потенциалы во вкладке «0) Основа».")
+        else:
+            p9 = parse_potentials_9(f.get("potentials_table",""))
+            focuses = build_realization_focus_from_p9(p9)
+            r["focuses"] = focuses
+            st.session_state.profile = profile
+            save_profile_state()
+            st.success("Фокусы собраны ✅")
+
+    st.divider()
+    st.subheader("🎯 3 фокуса и 9 действий")
+
+    focuses = r.get("focuses") or {}
+    if not focuses or not (focuses.get("focus1") or {}).get("title"):
+        st.info("Нажмите «Сгенерировать 3 фокуса», чтобы заполнить блок.")
+        return
+
+    for key, label in [("focus1","Фокус 1"), ("focus2","Фокус 2"), ("focus3","Фокус 3")]:
+        block = focuses.get(key) or {"title":"", "actions":[]}
+        st.markdown(f"### {label}")
+
+        block["title"] = st.text_input(f"{label}: название", value=block.get("title",""), key=f"real_{key}_title")
+
+        acts = block.get("actions") or []
+        while len(acts) < 3:
+            acts.append("")
+        acts = acts[:3]
+
+        acts[0] = st.text_input(f"{label}: действие 1", value=acts[0], key=f"real_{key}_a1")
+        acts[1] = st.text_input(f"{label}: действие 2", value=acts[1], key=f"real_{key}_a2")
+        acts[2] = st.text_input(f"{label}: действие 3", value=acts[2], key=f"real_{key}_a3")
+
+        block["actions"] = acts
+        focuses[key] = block
+
+        st.write("")
+
+    if st.button("💾 Сохранить фокусы", use_container_width=True):
+        r["focuses"] = focuses
         st.session_state.profile = profile
         save_profile_state()
-        st.success("Сохранено ✅")
+        st.success("Фокусы сохранены ✅")
 
 
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
-    st.markdown("## 2) Сегодня")
-    st.info("Можно позже подключить daily-чеклист из блоков действий. Сейчас вкладка оставлена как заготовка.")
+    f = profile["foundation"]
+    r = profile["realization"]
+    t = profile["today"]
 
+    st.markdown("## 2) Сегодня — идеальный день")
+
+    today_key = date.today().isoformat()
+    t.setdefault("by_date", {})
+    day = t["by_date"].setdefault(today_key, {"actions": {}, "hobby": ""})
+
+    focuses = (r.get("focuses") or {})
+    all_actions = []
+
+    for k in ["focus1","focus2","focus3"]:
+        blk = focuses.get(k) or {}
+        title = (blk.get("title") or "").strip()
+        for i, a in enumerate(blk.get("actions") or [], start=1):
+            a = (a or "").strip()
+            if a:
+                all_actions.append(f"{title} — {a}" if title else a)
+
+    if not all_actions:
+        st.info("Сначала заполните фокусы во вкладке «Реализация».")
+        return
+
+    st.caption("Отметьте 3–5 действий на день. Это и есть ваш «идеальный день» — без перегруза.")
+
+    # чеклисты
+    for a in all_actions:
+        done = bool(day["actions"].get(a, False))
+        new_val = st.checkbox(a, value=done)
+        day["actions"][a] = new_val
+
+    st.write("")
+    # хобби
+    hobbies = r.get("hobbies_selected") or []
+    if hobbies:
+        hobby_choice = st.selectbox(
+            "Ресурс/хобби на сегодня (из 2 ряда)",
+            options=["(не выбрано)"] + hobbies,
+            index=(hobbies.index(day.get("hobby")) + 1) if day.get("hobby") in hobbies else 0
+        )
+        day["hobby"] = "" if hobby_choice == "(не выбрано)" else hobby_choice
+
+    if st.button("💾 Сохранить день", use_container_width=True):
+        t["by_date"][today_key] = day
+        st.session_state.profile = profile
+        save_profile_state()
+        st.success("Сохранено ✅")
+
+    st.divider()
+    done_cnt = sum(1 for v in (day["actions"] or {}).values() if v)
+    total_cnt = len(day["actions"] or {})
+    st.write(f"✅ Выполнено сегодня: **{done_cnt}/{total_cnt}**")
+
+def progress_tab(profile: dict):
+    profile = ensure_profile_schema(profile)
+    t = profile.get("today", {}).get("by_date", {}) or {}
+
+    st.markdown("## Прогресс")
+
+    if not t:
+        st.info("Пока нет данных. Отмечайте действия во вкладке «Сегодня».")
+        return
+
+    # последние 14 дней
+    keys = sorted(t.keys(), reverse=True)[:14]
+
+    rows = []
+    for k in keys:
+        day = t.get(k) or {}
+        actions = day.get("actions") or {}
+        done = sum(1 for v in actions.values() if v)
+        total = len(actions)
+        hobby = day.get("hobby") or ""
+        rows.append((k, done, total, hobby))
+
+    st.caption("Последние дни (выполнено / всего + хобби):")
+    for (k, done, total, hobby) in rows:
+        st.write(f"- {k}: **{done}/{total}**" + (f" · {hobby}" if hobby else ""))
 
 def settings_tab():
     st.markdown("## Настройки")
@@ -1312,7 +1586,7 @@ profile = st.session_state.profile
 
 header_bar()
 
-tabs = st.tabs(["0) Основа", "1) Реализация", "2) Сегодня", "Настройки"])
+tabs = st.tabs(["0) Основа", "1) Реализация", "Хобби", "2) Сегодня", "Прогресс", "Настройки"])
 
 with tabs[0]:
     foundation_tab(profile)
@@ -1321,9 +1595,15 @@ with tabs[1]:
     realization_tab(profile)
 
 with tabs[2]:
-    today_tab(profile)
+    hobbies_tab(profile)
 
 with tabs[3]:
+    today_tab(profile)
+
+with tabs[4]:
+    progress_tab(profile)
+
+with tabs[5]:
     settings_tab()
     
     
