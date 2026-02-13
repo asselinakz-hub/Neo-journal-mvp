@@ -1559,6 +1559,55 @@ def build_actions_fallback(skeleton: dict) -> list[dict]:
 
     return base
 
+def top3_from_p9(p9) -> list[str]:
+    """
+    Поддерживает разные форматы parse_potentials_9:
+    - dict: {"p1_name": "...", "p2_name": "...", "p3_name": "..."}
+    - list/tuple: ["...", "...", "...", ...] или [{"name":...}, ...]
+    - None / странные случаи -> безопасный fallback
+    """
+    if p9 is None:
+        return []
+
+    # dict
+    if isinstance(p9, dict):
+        out = []
+        for k in ("p1_name", "p2_name", "p3_name"):
+            v = (p9.get(k) or "").strip()
+            if v:
+                out.append(v)
+        # fallback: если вдруг ключи другие
+        if len(out) < 3:
+            # попробуем популярные альтернативы
+            for k in ("p1", "p2", "p3"):
+                v = (p9.get(k) or "").strip() if isinstance(p9.get(k), str) else ""
+                if v and v not in out:
+                    out.append(v)
+        return out[:3]
+
+    # list / tuple
+    if isinstance(p9, (list, tuple)):
+        out = []
+        for item in p9:
+            if isinstance(item, str):
+                s = item.strip()
+                if s:
+                    out.append(s)
+            elif isinstance(item, dict):
+                # попробуем вытащить name/label/title
+                for kk in ("name", "label", "title"):
+                    if kk in item and isinstance(item[kk], str) and item[kk].strip():
+                        out.append(item[kk].strip())
+                        break
+        return out[:3]
+
+    # string — не ожидаем, но пусть будет безопасно
+    if isinstance(p9, str):
+        # попробуем вытащить первые 3 строки
+        lines = [x.strip() for x in p9.splitlines() if x.strip()]
+        return lines[:3]
+
+    return []
 
 def build_soul_and_actions(skeleton: dict) -> dict:
     """
@@ -1656,12 +1705,12 @@ def build_soul_and_actions(skeleton: dict) -> dict:
 
 # Если у тебя они называются иначе — просто подставь свои имена ниже.
 
-if "point_a" not in st.session_state:
-    st.session_state.point_a = ""
-if "point_b" not in st.session_state:
-    st.session_state.point_b = ""
-if "top_potentials" not in st.session_state:
-    st.session_state.top_potentials = []
+    if "point_a" not in st.session_state:
+        st.session_state.point_a = ""
+    if "point_b" not in st.session_state:
+        st.session_state.point_b = ""
+    if "top_potentials" not in st.session_state:
+        st.session_state.top_potentials = []
 
 
 # Твои поля (если они уже есть — НЕ дублируй, а оставь только блок кнопки ниже)
@@ -1670,25 +1719,25 @@ if "top_potentials" not in st.session_state:
 
 # !!! ВАЖНО: оставь свои текущие поля ввода. Ниже — именно блок генерации/вывода.
 
-if st.button("✨ Сгенерировать 3 фокуса (скелет + душа)", use_container_width=True):
-    point_a = st.session_state.point_a
-    point_b = st.session_state.point_b
-    top_potentials = st.session_state.top_potentials
+    if st.button("✨ Сгенерировать 3 фокуса (скелет + душа)", use_container_width=True):
+        point_a = st.session_state.point_a
+        point_b = st.session_state.point_b
+        top_potentials = st.session_state.top_potentials
 
     # 1) СКЕЛЕТ
-    skeleton = build_focus_skeleton(point_a, point_b, top_potentials)
+        skeleton = build_focus_skeleton(point_a, point_b, top_potentials)
 
     # 2) ДУША + 9 ДЕЙСТВИЙ
-    result = build_soul_and_actions(skeleton)
+        result = build_soul_and_actions(skeleton)
 
     # Сохраняем в session_state, чтобы можно было дальше "Сохранить фокусы"
-    st.session_state.generated_skeleton = skeleton
-    st.session_state.generated_result = result
+        st.session_state.generated_skeleton = skeleton
+        st.session_state.generated_result = result
 
 
 # Отрисовка (если уже сгенерили)
-if "generated_result" in st.session_state:
-    result = st.session_state.generated_result
+    if "generated_result" in st.session_state:
+        result = st.session_state.generated_result
 
     # Душа (опционально)
     if result.get("soul_text"):
@@ -1760,11 +1809,11 @@ def realization_tab(profile: dict):
         else:
             p9 = parse_potentials_9(f.get("potentials_table", ""))
 
-            top_potentials = [
-                p9.get("p1_name"),
-                p9.get("p2_name"),
-                p9.get("p3_name"),
-            ]
+            top_potentials = top3_from_p9(p9)
+
+            if len(top_potentials) < 3:
+                st.error("Не удалось определить топ-3 потенциала. Проверь формат таблицы потенциалов во вкладке «0) Основа».")
+                st.stop()
 
             point_a = r.get("point_a", "")
             point_b = r.get("point_b", "")
