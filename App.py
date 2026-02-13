@@ -1877,7 +1877,6 @@ def realization_tab(profile: dict):
 
     for key, label in [("focus1","Фокус 1"), ("focus2","Фокус 2"), ("focus3","Фокус 3")]:
         block = focuses.get(key) or {"title":"", "actions":[]}
-        st.markdown(f"### {label}")
 
         st.markdown(f"### {label}")
         st.caption("Название фокуса")
