@@ -1403,10 +1403,6 @@ def foundation_tab(profile: dict):
 #  Вставь ЭТО вместо старой генерации фокусов (внутри твоей вкладки "Реализация")
 # =========================
 
-import json
-import re
-import streamlit as st
-
 
 # ---------- 1) ЖЁСТКАЯ КЛАССИФИКАЦИЯ (СКЕЛЕТ) ----------
 
@@ -1721,36 +1717,32 @@ if "generated_result" in st.session_state:
 def realization_tab(profile: dict):
 
     profile = ensure_profile_schema(profile)
-
     f = profile["foundation"]
     r = profile["realization"]
 
     st.markdown("## 1) Реализация")
 
-    # ---------- Точки ----------
     c1, c2 = st.columns(2)
-
     with c1:
         r["point_a"] = st.text_area(
             "Точка А (сейчас)",
             value=r.get("point_a", ""),
-            height=140
+            height=140,
+            key="real_point_a"   # ✅ ключ
         )
-
     with c2:
         r["point_b"] = st.text_area(
             "Точка Б (как хочу)",
             value=r.get("point_b", ""),
-            height=140
+            height=140,
+            key="real_point_b"   # ✅ ключ
         )
 
     st.write("")
-
-    # ---------- Кнопки ----------
     cols = st.columns(2)
 
     with cols[0]:
-        if st.button("💾 Сохранить точки", use_container_width=True):
+        if st.button("💾 Сохранить точки", use_container_width=True, key="real_save_points"):  # ✅ ключ
             st.session_state.profile = profile
             save_profile_state()
             st.success("Сохранено ✅")
@@ -1758,20 +1750,16 @@ def realization_tab(profile: dict):
     with cols[1]:
         gen_focus = st.button(
             "✨ Сгенерировать 3 фокуса (скелет + душа)",
-            use_container_width=True
+            use_container_width=True,
+            key="real_gen_focus"  # ✅ ключ
         )
 
-    # ---------- ГЕНЕРАЦИЯ ----------
     if gen_focus:
-
         if not (f.get("potentials_table") or "").strip():
             st.error("Сначала заполните потенциалы во вкладке «0) Основа».")
         else:
-
-            # 1️⃣ Берём потенциалы как раньше
             p9 = parse_potentials_9(f.get("potentials_table", ""))
 
-            # Берём топ-3
             top_potentials = [
                 p9.get("p1_name"),
                 p9.get("p2_name"),
@@ -1781,40 +1769,30 @@ def realization_tab(profile: dict):
             point_a = r.get("point_a", "")
             point_b = r.get("point_b", "")
 
-            # 2️⃣ СКЕЛЕТ
             skeleton = build_focus_skeleton(
                 point_a=point_a,
                 point_b=point_b,
                 top_potentials=top_potentials
             )
 
-            # 3️⃣ ДУША + ДЕЙСТВИЯ
             result = build_soul_and_actions(skeleton)
 
-            # ---------- КОНВЕРТАЦИЯ В ТВОЙ ФОРМАТ ----------
             focuses_out = {}
-
             for i, fcs in enumerate(result["focuses"], start=1):
-
                 focuses_out[f"focus{i}"] = {
                     "title": fcs["title"],
                     "actions": fcs["actions"]
                 }
 
             r["focuses"] = focuses_out
-
-            # Можно сохранить soul текст отдельно если захочешь потом выводить
             r["soul_text"] = result.get("soul_text", "")
 
             st.session_state.profile = profile
             save_profile_state()
-
             st.success("Фокусы собраны ✅")
 
-    # ---------- ВЫВОД ----------
     st.divider()
 
-    # Душа (если есть)
     if r.get("soul_text"):
         st.markdown("### ✨ Почему это ваш путь")
         st.write(r["soul_text"])
@@ -1822,65 +1800,39 @@ def realization_tab(profile: dict):
     st.subheader("🎯 3 фокуса и 9 действий")
 
     focuses = r.get("focuses") or {}
-
     if not focuses or not (focuses.get("focus1") or {}).get("title"):
         st.info("Нажмите «Сгенерировать 3 фокуса», чтобы заполнить блок.")
         return
 
-    # ---------- РЕДАКТИРОВАНИЕ ----------
-    for key, label in [
-        ("focus1", "Фокус 1"),
-        ("focus2", "Фокус 2"),
-        ("focus3", "Фокус 3")
-    ]:
-
-        block = focuses.get(key) or {"title": "", "actions": []}
-
+    for key, label in [("focus1","Фокус 1"), ("focus2","Фокус 2"), ("focus3","Фокус 3")]:
+        block = focuses.get(key) or {"title":"", "actions":[]}
         st.markdown(f"### {label}")
 
         block["title"] = st.text_input(
             f"{label}: название",
-            value=block.get("title", ""),
+            value=block.get("title",""),
             key=f"real_{key}_title"
         )
 
         acts = block.get("actions") or []
-
         while len(acts) < 3:
             acts.append("")
-
         acts = acts[:3]
 
-        acts[0] = st.text_input(
-            f"{label}: действие 1",
-            value=acts[0],
-            key=f"real_{key}_a1"
-        )
-
-        acts[1] = st.text_input(
-            f"{label}: действие 2",
-            value=acts[1],
-            key=f"real_{key}_a2"
-        )
-
-        acts[2] = st.text_input(
-            f"{label}: действие 3",
-            value=acts[2],
-            key=f"real_{key}_a3"
-        )
+        acts[0] = st.text_input(f"{label}: действие 1", value=acts[0], key=f"real_{key}_a1")
+        acts[1] = st.text_input(f"{label}: действие 2", value=acts[1], key=f"real_{key}_a2")
+        acts[2] = st.text_input(f"{label}: действие 3", value=acts[2], key=f"real_{key}_a3")
 
         block["actions"] = acts
         focuses[key] = block
-
         st.write("")
 
-    # ---------- СОХРАНЕНИЕ ----------
-    if st.button("💾 Сохранить фокусы", use_container_width=True):
+    if st.button("💾 Сохранить фокусы", use_container_width=True, key="real_save_focuses"):  # ✅ ключ
         r["focuses"] = focuses
         st.session_state.profile = profile
         save_profile_state()
         st.success("Фокусы сохранены ✅")
-
+        
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
     f = profile["foundation"]
