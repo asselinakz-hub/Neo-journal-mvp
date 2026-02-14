@@ -2266,12 +2266,75 @@ def today_tab(profile: dict):
 
     # --- options (подставь свои списки, если они у тебя уже собраны выше)
     # если нет — сделай пустые списки, чтобы не падало
-    solo_opts = st.session_state.get("solo_opts", []) or []
-    rec_opts  = st.session_state.get("rec_opts", []) or []
-    ind_opts  = st.session_state.get("ind_opts", []) or []
-    col_opts  = st.session_state.get("col_opts", []) or []
-    game_opts = st.session_state.get("game_opts", []) or []
+        # =========================
+    # 🌿 Ресурс на сегодня (из 2 ряда) — options НЕ из session_state, а из профиля/канона
+    # =========================
+    st.subheader("🌿 Ресурс на сегодня (из 2 ряда)")
 
+    # 1) Матрица нужна, чтобы понимать потенциалы позиций 4/5/6
+    if not (profile.get("foundation", {}).get("potentials_table") or "").strip():
+        st.info("Сначала заполните потенциалы во вкладке «0) Основа».")
+        return
+
+    p9 = parse_potentials_9(profile["foundation"]["potentials_table"])
+    pos4 = (p9[3] or "").strip() if len(p9) > 3 else ""
+    pos5 = (p9[4] or "").strip() if len(p9) > 4 else ""
+    pos6 = (p9[5] or "").strip() if len(p9) > 5 else ""
+
+    # 2) Подсказки из канона
+    # pos4: личные хобби
+    d4 = (POT_4_CANON or {}).get(pos4) or {}
+    solo_opts = [str(x).strip() for x in (d4.get("hobby") or []) if str(x).strip()]
+
+    # pos6: коллективные
+    d6 = (POT_6_CANON or {}).get(pos6) or {}
+    col_opts = [str(x).strip() for x in (d6.get("collective_hobby") or []) if str(x).strip()]
+
+    # 3) pos5 и восстановление/игра — если у тебя пока нет канона, берём из сохранённых пользователем списков (если есть)
+    #    (эти ключи ты можешь заполнять во вкладке "Хобби")
+    pack = (profile.get("realization", {}).get("hobbies_pack") or {})
+    rec_opts  = [str(x).strip() for x in (pack.get("restore") or []) if str(x).strip()]
+    ind_opts  = [str(x).strip() for x in (pack.get("individual") or []) if str(x).strip()]  # позиция 5
+    game_opts = [str(x).strip() for x in (pack.get("game") or []) if str(x).strip()]        # игровая цель
+
+    # 4) Уникальность
+    def uniq(lst):
+        out, seen = [], set()
+        for x in lst:
+            k = x.lower()
+            if k not in seen:
+                out.append(x); seen.add(k)
+        return out
+
+    solo_opts = uniq(solo_opts)
+    col_opts  = uniq(col_opts)
+    rec_opts  = uniq(rec_opts)
+    ind_opts  = uniq(ind_opts)
+    game_opts = uniq(game_opts)
+
+    # 5) Сохранённый выбор на дату
+    day.setdefault("resources", {})  # чтобы не падало на старых профилях
+    res = day["resources"]
+
+    def pick(label, opts, key, icon):
+        options = ["(не выбрано)"] + [f"{label}: {x}" for x in opts]
+        cur = res.get(key, "")
+        idx = 0
+        if cur and cur in options:
+            idx = options.index(cur)
+        chosen = st.selectbox(
+            f"{icon} {label}",
+            options=options,
+            index=idx,
+            key=f"today_{today_key}_{key}"
+        )
+        res[key] = "" if chosen == "(не выбрано)" else chosen
+
+    pick("Личное (позиция 4)", solo_opts, "pos4", "🧘")
+    pick("Восстановление канала", rec_opts, "restore", "🌿")
+    pick("Индивидуальное (позиция 5)", ind_opts, "pos5", "🎭")
+    pick("Коллективное (позиция 6)", col_opts, "pos6", "👥")
+    pick("Игровая цель (мотивация)", game_opts, "game", "🎯")
     # чтобы не падало при пустом каноне
     def _opts_with_none(opts: list[str]) -> list[str]:
         return ["(не выбрано)"] + (opts or [])
@@ -2320,17 +2383,19 @@ def today_tab(profile: dict):
     st.write("")
 
     # --- КНОПКА 1: сохранить как настройки (постоянно)
-    if st.button("💾 Сохранить хобби", use_container_width=True, key=f"save_hobbies_{today_key}"):
-        _set_saved("Личное: ", "" if solo_choice == "(не выбрано)" else solo_choice)
-        _set_saved("Восстановление: ", "" if rec_choice == "(не выбрано)" else rec_choice)
-        _set_saved("Индивидуальное: ", "" if ind_choice == "(не выбрано)" else ind_choice)
-        _set_saved("Коллективное: ", "" if col_choice == "(не выбрано)" else col_choice)
-        _set_saved("Игра: ", "" if game_choice == "(не выбрано)" else game_choice)
+    if st.button("💾 Сохранить хобби", use_container_width=True):
+        r["hobbies_selected"] = selected
 
-        r["hobbies_selected"] = saved
+        # если у тебя уже есть отдельные списки по категориям — сохрани их сюда
+        r.setdefault("hobbies_pack", {})
+        # Примеры (подставь свои переменные/виджеты, если они у тебя уже есть):
+        # r["hobbies_pack"]["restore"] = restore_selected
+        # r["hobbies_pack"]["individual"] = pos5_selected
+        # r["hobbies_pack"]["game"] = game_selected
+
         st.session_state.profile = profile
         save_profile_state()
-        st.success("Хобби сохранены ✅")
+        st.success("Сохранено ✅")
 
     # --- КНОПКА 2: сохранить выбор на конкретный день (дневник)
     if st.button("💾 Сохранить день", use_container_width=True, key=f"save_day_{today_key}"):
