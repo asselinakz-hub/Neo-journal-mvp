@@ -2242,15 +2242,14 @@ def today_tab(profile: dict):
     # если ты где-то сохраняешь профиль кнопкой — оставь как есть
     # (или добавь кнопку сохранения тут, если хочешь)
 
-    st.session_state["solo_opts"] = solo_opts
-    st.session_state["rec_opts"] = rec_opts
-    st.session_state["ind_opts"] = ind_opts
-    st.session_state["col_opts"] = col_opts
-    st.session_state["game_opts"] = game_opts
-    
     st.write("")
     st.subheader("🌿 Ресурс на сегодня (из 2 ряда)")
-
+    # --- options: гарантированно определены
+    solo_opts = []
+    rec_opts  = []
+    ind_opts  = []
+    col_opts  = []
+    game_opts = []
     # --- текущие сохранённые хобби пользователя (постоянные настройки)
     # будем хранить в r["hobbies_selected"] как список строк
     saved = r.get("hobbies_selected", []) or []
