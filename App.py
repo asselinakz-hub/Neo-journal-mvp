@@ -1282,6 +1282,10 @@ def get_hobby_suggestions_from_p9(p9: list[str]) -> dict:
         "game_goal": game_goal,
     }
 
+def _safe_default(options: list[str], default: list[str]) -> list[str]:
+    opt_set = set(options or [])
+    return [x for x in (default or []) if x in opt_set]
+
 def hobbies_tab(profile: dict):
     profile = ensure_profile_schema(profile)
     f = profile["foundation"]
@@ -1307,38 +1311,46 @@ def hobbies_tab(profile: dict):
     with c1:
         st.markdown("### 🧘 Личное (позиция 4)")
         st.caption("Выберите личные хобби (они подпитывают восприятие/ясность)")
+        solo_opts = [f"Личное: {x}" for x in sugg["solo"]]
+        solo_def = [x for x in saved if isinstance(x,str) and x.startswith("Личное: ")]
         solo_sel = st.multiselect(
             "Личное",
-            options=[f"Личное: {x}" for x in sugg["solo"]],
-            default=[x for x in saved if isinstance(x,str) and x.startswith("Личное: ")],
+            options=solo_opts,
+            default=_safe_default(solo_opts, solo_def),
             label_visibility="collapsed",
         )
 
         st.markdown("### 🌿 Восстановление канала")
         st.caption("Чем разгружать голову/канал (без давления)")
+        rec_opts = [f"Восстановление: {x}" for x in sugg["recovery"]]
+        rec_def = [x for x in saved if isinstance(x,str) and x.startswith("Восстановление: ")]
         rec_sel = st.multiselect(
             "Восстановление",
-            options=[f"Восстановление: {x}" for x in sugg["recovery"]],
-            default=[x for x in saved if isinstance(x,str) and x.startswith("Восстановление: ")],
+            options=rec_opts,
+            default=_safe_default(rec_opts, rec_def),
             label_visibility="collapsed",
         )
 
     with c2:
         st.markdown("### 🎭 Индивидуальное (позиция 5)")
         st.caption("Одиночное хобби/проявление (делать одному)")
+        ind_opts = [f"Индивидуальное: {x}" for x in sugg["individual"]]
+        ind_def = [x for x in saved if isinstance(x,str) and x.startswith("Индивидуальное: ")]
         ind_sel = st.multiselect(
             "Индивидуальное",
-            options=[f"Индивидуальное: {x}" for x in sugg["individual"]],
-            default=[x for x in saved if isinstance(x,str) and x.startswith("Индивидуальное: ")],
+            options=ind_opts,
+            default=_safe_default(ind_opts, ind_def),
             label_visibility="collapsed",
         )
 
         st.markdown("### 👥 Коллективное (позиция 6)")
         st.caption("Коллективные хобби (социальная энергия/результат)")
+        col_opts = [f"Коллективное: {x}" for x in sugg["collective"]]
+        col_def = [x for x in saved if isinstance(x,str) and x.startswith("Коллективное: ")]
         col_sel = st.multiselect(
             "Коллективное",
-            options=[f"Коллективное: {x}" for x in sugg["collective"]],
-            default=[x for x in saved if isinstance(x,str) and x.startswith("Коллективное: ")],
+            options=col_opts,
+            default=_safe_default(col_opts, col_def),
             label_visibility="collapsed",
         )
 
