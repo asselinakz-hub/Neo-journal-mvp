@@ -1495,18 +1495,47 @@ def header_bar():
     st.markdown(f"# {APP_TITLE}")
     st.write("")
 
+def _get_qp() -> dict:
+    try:
+        return dict(st.query_params)
+    except Exception:
+        return st.experimental_get_query_params()
+
+def _set_qp(**kwargs):
+    try:
+        st.query_params.clear()
+        for k, v in kwargs.items():
+            if v is None:
+                continue
+            st.query_params[k] = str(v)
+    except Exception:
+        qp = {k: [str(v)] for k, v in kwargs.items() if v is not None}
+        st.experimental_set_query_params(**qp)
+
+def _clear_qp():
+    try:
+        st.query_params.clear()
+    except Exception:
+        st.experimental_set_query_params()
 
 def auth_screen():
     st.title(APP_TITLE)
-    st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
+    st.caption("Платформа навигации по реализации через потенциалы.")
+
+    # DEBUG: покажет есть ли токен в URL (можно потом убрать)
+    qp = _get_qp()
+    tok_dbg = qp.get("token")
+    if isinstance(tok_dbg, list):
+        tok_dbg = tok_dbg[0] if tok_dbg else None
+    st.caption(f"DEBUG token in URL: {'YES' if tok_dbg else 'NO'}")
 
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
-        with st.form("auth_login_form_v2", clear_on_submit=False):
-            email = st.text_input("Email", key="login_email")
-            pw = st.text_input("Пароль", type="password", key="login_pw")
-            remember = st.checkbox("Запомнить меня на 14 дней", value=True, key="login_remember")
+        with st.form("login_form_v2", clear_on_submit=False):
+            email = st.text_input("Email", key="login_email_v2")
+            pw = st.text_input("Пароль", type="password", key="login_pw_v2")
+            remember = st.checkbox("Запомнить меня (14 дней)", value=True, key="login_remember_v2")
             ok = st.form_submit_button("Войти", use_container_width=True)
 
         if ok:
@@ -1529,21 +1558,19 @@ def auth_screen():
             else:
                 st.session_state.profile = ensure_profile_schema(prof["data"])
 
-            # remember-me token в URL (если функции есть)
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
-                if token:
-                    st.query_params["token"] = token
+                _set_qp(token=token)
             else:
-                st.query_params.clear()
+                _clear_qp()
 
             st.rerun()
 
     with tab_signup:
-        with st.form("auth_signup_form_v2", clear_on_submit=False):
-            email2 = st.text_input("Email (для доступа)", key="su_email")
-            pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
-            pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
+        with st.form("signup_form_v2", clear_on_submit=False):
+            email2 = st.text_input("Email (для доступа)", key="su_email_v2")
+            pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw_v2")
+            pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2_v2")
             ok2 = st.form_submit_button("Создать доступ", use_container_width=True)
 
         if ok2:
@@ -1560,9 +1587,9 @@ def auth_screen():
                 st.error("Такой email уже зарегистрирован.")
                 return
 
-            u2 = db_create_user(email2, pw2)
+            u = db_create_user(email2, pw2)
             data = default_profile()
-            db_upsert_profile(u2["id"], data)
+            db_upsert_profile(u["id"], data)
             st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
 
 def foundation_tab(profile: dict):
@@ -2411,12 +2438,37 @@ def settings_tab():
         st.session_state.user = None
         st.session_state.profile = None
         st.rerun()
+        
     st.query_params.clear()
 
 # =========================
 # MAIN
 # =========================
 init_state()
+
+# --- auto-login via token ---
+if not st.session_state.get("authed"):
+    qp = _get_qp()
+    tok = qp.get("token")
+    if isinstance(tok, list):
+        tok = tok[0] if tok else None
+
+    if tok:
+        uid = verify_session_token(tok)
+        if uid:
+            r = sb.table(USERS_TABLE).select("*").eq("id", uid).limit(1).execute()
+            u = (r.data or [None])[0]
+            if u:
+                st.session_state.authed = True
+                st.session_state.user = u
+
+                prof = db_get_profile(u["id"])
+                if not prof:
+                    data = default_profile()
+                    db_upsert_profile(u["id"], data)
+                    st.session_state.profile = data
+                else:
+                    st.session_state.profile = ensure_profile_schema(prof["data"])
 
 if not st.session_state.authed:
     auth_screen()
