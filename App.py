@@ -2339,11 +2339,7 @@ def today_tab(profile: dict):
     def _opts_with_none(opts: list[str]) -> list[str]:
         return ["(не выбрано)"] + (opts or [])
     # --- options: гарантированно определены
-    solo_opts = []
-    rec_opts  = []
-    ind_opts  = []
-    col_opts  = []
-    game_opts = []
+
     # --- 4 селекта ресурсов + игровой мотиватор
     solo_choice = st.selectbox(
         "🧘 Личное (позиция 4)",
