@@ -17,6 +17,7 @@ import base64
 import hmac
 import time
 
+st.write("DEBUG qp:", dict(st.query_params)) 
 # ✅ секрет для подписи токена (добавь в Streamlit secrets лучше)
 SESSION_SECRET = st.secrets.get("SESSION_SECRET", os.getenv("SESSION_SECRET", "CHANGE_ME_PLEASE"))
 
@@ -1504,7 +1505,9 @@ def auth_screen():
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
 
     # DEBUG
-    st.caption(f"DEBUG token in URL: {'YES' if st.query_params.get('token') else 'NO'}")
+    qp = dict(st.query_params)
+    st.caption(f"DEBUG qp keys: {list(qp.keys())}")
+    st.caption(f"DEBUG token in URL: {'YES' if qp.get('token') else 'NO'}")
 
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
@@ -1536,18 +1539,20 @@ def auth_screen():
                 st.session_state.profile = ensure_profile_schema(prof["data"])
 
             # ВАЖНО: пишем токен в URL
+            # ВАЖНО: пишем токен в URL (только через st.query_params, без experimental_*)
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
-                st.query_params["token"] = token
+                st.query_params.update({"token": token})
             else:
                 st.query_params.pop("token", None)
 
             st.rerun()
-
+    
     with tab_signup:
         with st.form("signup_form_v1", clear_on_submit=False):
             st.info("Тут оставь свой текущий signup-код (главное: ключ формы уникальный).")
             st.form_submit_button("Создать", use_container_width=True)
+
 def foundation_tab(profile: dict):
     profile = ensure_profile_schema(profile)
     f = profile["foundation"]
@@ -2393,7 +2398,6 @@ def settings_tab():
 
     if st.button("🚪 Выйти", use_container_width=True):
         # чистим только при выходе
-        st.query_params.pop("token", None)
 
         st.session_state.authed = False
         st.session_state.user = None
