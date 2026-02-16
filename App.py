@@ -2206,51 +2206,131 @@ def today_tab(profile: dict):
     res = day["resources"]
 
     st.markdown("## Сегодня")
-    st.caption("День фиксирует действия и ресурс. Хобби подтягиваются из вкладки «Хобби» (постоянные настройки).")
+    st.caption("День фиксирует фокус, действия и ресурс. Хобби/ресурсы подтягиваются из «Хобби» и/или канона.")
 
-    # =========================
-    # 🌿 Ресурс на сегодня (из 2 ряда) — из r["hobbies_selected"]
-    # =========================
+    # ==========================================================
+    # 1) 🎯 ФОКУС НА СЕГОДНЯ (возвращаем!)
+    # ==========================================================
+    st.subheader("🎯 Фокус на сегодня")
+
+    # Пытаемся вытащить 3 фокуса из разных возможных структур хранения
+    focuses = []
+
+    # Вариант 1: r["focuses"] = [{"title": "...", "actions": [...]}, ...]
+    if isinstance(r.get("focuses"), list):
+        for it in r["focuses"]:
+            if isinstance(it, dict):
+                title = (it.get("title") or it.get("name") or "").strip()
+                actions = it.get("actions") or it.get("steps") or []
+                if title:
+                    focuses.append({"title": title, "actions": actions})
+
+    # Вариант 2: плоские ключи focus_1_title / focus_1_actions и т.п.
+    if not focuses:
+        for i in range(1, 4):
+            title = (r.get(f"focus_{i}_title") or r.get(f"focus{i}_title") or "").strip()
+            actions = r.get(f"focus_{i}_actions") or r.get(f"focus{i}_actions") or []
+            if title:
+                focuses.append({"title": title, "actions": actions})
+
+    # Если всё равно пусто — показываем подсказку
+    if not focuses:
+        st.info("Фокусы не найдены. Сначала сгенерируйте/сохраните 3 фокуса во вкладке «Реализация».")
+    else:
+        focus_titles = [x["title"] for x in focuses]
+        day.setdefault("focus_today", "")
+        cur_focus = day.get("focus_today", "")
+        focus_options = ["(не выбрано)"] + focus_titles
+        idx = focus_options.index(cur_focus) if cur_focus in focus_options else 0
+
+        chosen_focus = st.selectbox(
+            "Выберите фокус дня",
+            options=focus_options,
+            index=idx,
+            key=f"today_{today_key}_focus_pick"
+        )
+        day["focus_today"] = "" if chosen_focus == "(не выбрано)" else chosen_focus
+
+        # Показ действий фокуса (если есть)
+        if day["focus_today"]:
+            fo = next((x for x in focuses if x["title"] == day["focus_today"]), None)
+            actions = (fo.get("actions") or []) if fo else []
+            actions = [str(a).strip() for a in actions if str(a).strip()]
+            if actions:
+                st.caption("Действия по фокусу:")
+                for a in actions[:6]:
+                    st.write("• " + a)
+
+    st.divider()
+
+    # ==========================================================
+    # 2) 🌿 РЕСУРС НА СЕГОДНЯ (хобби/ресурсы)
+    # ==========================================================
     st.subheader("🌿 Ресурс на сегодня (из 2 ряда)")
 
-    saved = (r.get("hobbies_selected") or [])
-    saved = [x for x in saved if isinstance(x, str) and x.strip()]
+    # --- 2.1 Матрица нужна для подтяжки канона
+    pot_table = (f.get("potentials_table") or "").strip()
+    p9 = parse_potentials_9(pot_table) if pot_table else [""] * 9
+    pos4 = (p9[3] or "").strip() if len(p9) > 3 else ""
+    pos5 = (p9[4] or "").strip() if len(p9) > 4 else ""
+    pos6 = (p9[5] or "").strip() if len(p9) > 5 else ""
 
-    # Если в «Хобби» ещё ничего не выбрано
-    if not saved:
-        st.info("Сначала выберите хобби во вкладке «Хобби», чтобы они подтянулись сюда.")
+    def uniq(lst):
+        out, seen = [], set()
+        for x in (lst or []):
+            x = str(x).strip()
+            if not x:
+                continue
+            k = x.lower()
+            if k not in seen:
+                out.append(x); seen.add(k)
+        return out
+
+    # --- 2.2 Источник A: старый формат r["hobbies_selected"] (список строк)
+    saved_list = r.get("hobbies_selected", []) or []
+    saved_list = [x for x in saved_list if isinstance(x, str) and x.strip()]
+
+    def _from_saved(prefix: str):
+        return uniq([x for x in saved_list if x.startswith(prefix)])
+
+    # --- 2.3 Источник B: новый pack-формат (если ты его ввела)
+    pack = (r.get("hobbies_pack") or {})
+    pack_restore = uniq(pack.get("restore") or [])
+    pack_ind     = uniq(pack.get("individual") or [])
+    pack_game    = uniq(pack.get("game") or [])
+
+    # --- 2.4 Источник C: канон
+    d4 = (POT_4_CANON or {}).get(pos4) or {}
+    canon_pos4 = uniq(d4.get("hobby") or [])
+
+    d6 = (POT_6_CANON or {}).get(pos6) or {}
+    canon_pos6 = uniq(d6.get("collective_hobby") or [])
+
+    # pos5 (индивидуальное) — если пока нет отдельного канона, берём только из saved/pack
+    canon_pos5 = []
+
+    # --- 2.5 Собираем options (приоритет: saved -> pack -> canon)
+    solo_opts = _from_saved("Личное (позиция 4): ") or [f"Личное (позиция 4): {x}" for x in canon_pos4]
+    rec_opts  = _from_saved("Восстановление: ")       or [f"Восстановление: {x}" for x in pack_restore] or []
+    ind_opts  = _from_saved("Индивидуальное (позиция 5): ") or [f"Индивидуальное (позиция 5): {x}" for x in pack_ind] or [f"Индивидуальное (позиция 5): {x}" for x in canon_pos5]
+    col_opts  = _from_saved("Коллективное (позиция 6): ") or [f"Коллективное (позиция 6): {x}" for x in canon_pos6]
+    game_opts = _from_saved("Игра: ")                   or [f"Игра: {x}" for x in pack_game] or []
+
+    # Если вообще ничего не найдено — подсказка
+    if not any([solo_opts, rec_opts, ind_opts, col_opts, game_opts]):
+        st.info("Пока нет ресурсов. Выберите хобби во вкладке «Хобби» или заполните канон.")
     else:
-        def _uniq(lst: list[str]) -> list[str]:
-            out, seen = [], set()
-            for x in lst:
-                k = x.lower().strip()
-                if k and k not in seen:
-                    out.append(x.strip()); seen.add(k)
-            return out
-
-        def _opts_by_prefix(prefix: str) -> list[str]:
-            # saved хранит строки вида:
-            # "Личное (позиция 4): ...", "Восстановление: ...", "Индивидуальное (позиция 5): ...", ...
-            opts = [x.strip() for x in saved if x.startswith(prefix)]
-            return _uniq(opts)
-
-        solo_opts = _opts_by_prefix("Личное (позиция 4): ")
-        rec_opts  = _opts_by_prefix("Восстановление: ")
-        ind_opts  = _opts_by_prefix("Индивидуальное (позиция 5): ")
-        col_opts  = _opts_by_prefix("Коллективное (позиция 6): ")
-        game_opts = _opts_by_prefix("Игра: ")
-
-        def pick(label: str, opts: list[str], key_name: str):
-            options = ["(не выбрано)"] + (opts or [])
-            cur = res.get(key_name, "")
+        def pick(label, opts, keyname):
+            options = ["(не выбрано)"] + uniq(opts)
+            cur = res.get(keyname, "")
             idx = options.index(cur) if cur in options else 0
             chosen = st.selectbox(
                 label,
                 options=options,
                 index=idx,
-                key=f"today_{today_key}_{key_name}",  # уникально по дате
+                key=f"today_{today_key}_res_{keyname}"
             )
-            res[key_name] = "" if chosen == "(не выбрано)" else chosen
+            res[keyname] = "" if chosen == "(не выбрано)" else chosen
 
         pick("🧘 Личное (позиция 4)", solo_opts, "pos4")
         pick("🌿 Восстановление канала", rec_opts, "restore")
@@ -2258,35 +2338,27 @@ def today_tab(profile: dict):
         pick("👥 Коллективное (позиция 6)", col_opts, "pos6")
         pick("🎯 Игровая цель (мотивация)", game_opts, "game")
 
-    # =========================
-    # ✅ Действия на сегодня (простая фиксация)
-    # =========================
-    st.subheader("✅ Действия на сегодня")
+    st.divider()
 
+    # ==========================================================
+    # 3) ✅ ДЕЙСТВИЯ НА СЕГОДНЯ
+    # ==========================================================
+    st.subheader("✅ Действия на сегодня")
     day.setdefault("actions_done", [])
     actions_done = day["actions_done"]
 
-    # 3 строки (можешь поменять на multiselect/checkboxes — это самый стабильный вариант)
     a1 = st.text_input("1) Главное действие", value=(actions_done[0] if len(actions_done) > 0 else ""), key=f"a1_{today_key}")
     a2 = st.text_input("2) Второе действие", value=(actions_done[1] if len(actions_done) > 1 else ""), key=f"a2_{today_key}")
     a3 = st.text_input("3) Третье действие", value=(actions_done[2] if len(actions_done) > 2 else ""), key=f"a3_{today_key}")
 
-    # сохраняем в day (без пустых строк)
-    actions_done = [x.strip() for x in [a1, a2, a3] if isinstance(x, str) and x.strip()]
-    day["actions_done"] = actions_done
+    day["actions_done"] = [x.strip() for x in [a1, a2, a3] if isinstance(x, str) and x.strip()]
 
-    # =========================
-    # 📝 Итог дня
-    # =========================
     st.subheader("📝 Итог дня")
-    day["notes"] = st.text_area("Коротко: что получилось / что мешало / что важно завтра",
+    day["notes"] = st.text_area("Что получилось / что мешало / что важно завтра",
                                 value=day.get("notes", ""),
                                 height=120,
                                 key=f"notes_{today_key}")
 
-    # =========================
-    # 💾 Сохранение
-    # =========================
     if st.button("💾 Сохранить день", use_container_width=True, key=f"save_today_{today_key}"):
         st.session_state.profile = profile
         save_profile_state()
