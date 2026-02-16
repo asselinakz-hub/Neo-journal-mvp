@@ -58,29 +58,6 @@ try:
 except Exception:
     OpenAI = None
 
-def try_autologin_from_token():
-    tok = st.query_params.get("token")
-    if not tok:
-        return False
-
-    u = db_get_user_by_session_token(tok)  # ДОЛЖНА БЫТЬ В БАЗЕ
-    if not u:
-        st.query_params.pop("token", None)
-        return False
-
-    st.session_state.authed = True
-    st.session_state.user = u
-
-    prof = db_get_profile(u["id"])
-    if not prof:
-        data = default_profile()
-        db_upsert_profile(u["id"], data)
-        st.session_state.profile = data
-    else:
-        st.session_state.profile = ensure_profile_schema(prof["data"])
-
-    return True
-
 
 # ---- init auth flags
 if "authed" not in st.session_state:
@@ -1522,18 +1499,6 @@ def header_bar():
     st.markdown(f"# {APP_TITLE}")
     st.write("")
     
-def _get_qp() -> dict:
-    # QueryParams ведёт себя как dict[str, str]
-    return dict(st.query_params)
-
-def _clear_qp(*keys):
-    if not keys:
-        st.query_params.clear()
-        return
-    for k in keys:
-        if k in st.query_params:
-            del st.query_params[k]
-    
 def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
@@ -2422,24 +2387,31 @@ def progress_tab(profile: dict):
 
 def settings_tab():
     st.markdown("## Настройки")
+
     if st.session_state.get("user"):
         st.code(f"Email: {st.session_state.user.get('email')}")
+
     if st.button("🚪 Выйти", use_container_width=True):
+        # чистим только при выходе
+        st.query_params.pop("token", None)
+
         st.session_state.authed = False
         st.session_state.user = None
         st.session_state.profile = None
         st.rerun()
-        
-    st.query_params.clear()
+# =========================
+# MAIN
+# =========================
+init_state()
 
 # =========================
 # MAIN
 # =========================
 init_state()
 
-# --- auto-login via token ---
+# --- auto-login via token (single place) ---
 if not st.session_state.get("authed"):
-
+    tok = st.query_params.get("token")
     if tok:
         uid = verify_session_token(tok)
         if uid:
@@ -2456,15 +2428,12 @@ if not st.session_state.get("authed"):
                     st.session_state.profile = data
                 else:
                     st.session_state.profile = ensure_profile_schema(prof["data"])
+        else:
+            # токен битый/просрочен → убираем из URL
+            st.query_params.pop("token", None)
 
-if not st.session_state.authed:
-    auth_screen()
-    st.stop()
-
-if not st.session_state.authed:
-    try_autologin_from_token()
-
-if not st.session_state.authed:
+# если не залогинен — показываем логин
+if not st.session_state.get("authed"):
     auth_screen()
     st.stop()
 
