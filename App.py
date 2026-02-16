@@ -58,6 +58,33 @@ try:
 except Exception:
     OpenAI = None
 
+def try_autologin_from_token():
+    tok = st.query_params.get("token")
+    if not tok:
+        return False
+
+    u = db_get_user_by_session_token(tok)  # ДОЛЖНА БЫТЬ В БАЗЕ
+    if not u:
+        st.query_params.pop("token", None)
+        return False
+
+    st.session_state.authed = True
+    st.session_state.user = u
+
+    prof = db_get_profile(u["id"])
+    if not prof:
+        data = default_profile()
+        db_upsert_profile(u["id"], data)
+        st.session_state.profile = data
+    else:
+        st.session_state.profile = ensure_profile_schema(prof["data"])
+
+    return True
+
+
+# ---- init auth flags
+if "authed" not in st.session_state:
+    st.session_state.authed = False
 
 # -------------------------
 # MUST be first Streamlit call
@@ -1499,15 +1526,6 @@ def _get_qp() -> dict:
     # QueryParams ведёт себя как dict[str, str]
     return dict(st.query_params)
 
-def _set_qp(**kwargs):
-    # ставим/удаляем ключи
-    for k, v in kwargs.items():
-        if v is None or v == "":
-            if k in st.query_params:
-                del st.query_params[k]
-        else:
-            st.query_params[k] = str(v)
-
 def _clear_qp(*keys):
     if not keys:
         st.query_params.clear()
@@ -1518,20 +1536,18 @@ def _clear_qp(*keys):
     
 def auth_screen():
     st.title(APP_TITLE)
-    st.caption("Платформа навигации по реализации через потенциалы.")
+    st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
 
-    # DEBUG: покажет есть ли токен в URL (можно потом убрать)
-    qp = dict(st.query_params)
-    tok_dbg = qp.get("token")  # строка или None
+    # DEBUG
+    st.caption(f"DEBUG token in URL: {'YES' if st.query_params.get('token') else 'NO'}")
 
-    st.caption(f"DEBUG token in URL: {'YES' if tok_dbg else 'NO'}")
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
-        with st.form("login_form_v2", clear_on_submit=False):
-            email = st.text_input("Email", key="login_email_v2")
-            pw = st.text_input("Пароль", type="password", key="login_pw_v2")
-            remember = st.checkbox("Запомнить меня (14 дней)", value=True, key="login_remember_v2")
+        with st.form("login_form_v1", clear_on_submit=False):
+            email = st.text_input("Email", key="login_email")
+            pw = st.text_input("Пароль", type="password", key="login_pw")
+            remember = st.checkbox("Запомнить меня (14 дней)", value=True, key="remember_me")
             ok = st.form_submit_button("Войти", use_container_width=True)
 
         if ok:
@@ -1554,46 +1570,19 @@ def auth_screen():
             else:
                 st.session_state.profile = ensure_profile_schema(prof["data"])
 
+            # ВАЖНО: пишем токен в URL
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
-                _set_qp(token=token)
-                st.success("Token written to URL ✅")
-                st.rerun()
-                st.caption(f"DEBUG token in URL: {'YES' if tok else 'NO'}")
-                
-                
-                
+                st.query_params["token"] = token
             else:
-                _clear_qp()
+                st.query_params.pop("token", None)
 
             st.rerun()
 
     with tab_signup:
-        with st.form("signup_form_v2", clear_on_submit=False):
-            email2 = st.text_input("Email (для доступа)", key="su_email_v2")
-            pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw_v2")
-            pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2_v2")
-            ok2 = st.form_submit_button("Создать доступ", use_container_width=True)
-
-        if ok2:
-            if not email2 or "@" not in email2:
-                st.error("Введи корректный email.")
-                return
-            if len(pw2) < 8:
-                st.error("Пароль минимум 8 символов.")
-                return
-            if pw2 != pw3:
-                st.error("Пароли не совпадают.")
-                return
-            if db_get_user_by_email(email2):
-                st.error("Такой email уже зарегистрирован.")
-                return
-
-            u = db_create_user(email2, pw2)
-            data = default_profile()
-            db_upsert_profile(u["id"], data)
-            st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
-
+        with st.form("signup_form_v1", clear_on_submit=False):
+            st.info("Тут оставь свой текущий signup-код (главное: ключ формы уникальный).")
+            st.form_submit_button("Создать", use_container_width=True)
 def foundation_tab(profile: dict):
     profile = ensure_profile_schema(profile)
     f = profile["foundation"]
@@ -2450,10 +2439,6 @@ init_state()
 
 # --- auto-login via token ---
 if not st.session_state.get("authed"):
-    qp = _get_qp()
-    tok = (qp.get("token") or [None])[0]
-    if isinstance(tok, list):
-        tok = tok[0] if tok else None
 
     if tok:
         uid = verify_session_token(tok)
@@ -2476,15 +2461,12 @@ if not st.session_state.authed:
     auth_screen()
     st.stop()
 
-# load profile once
-if not st.session_state.profile:
-    prof = db_get_profile(st.session_state.user["id"])
-    if prof and prof.get("data"):
-        st.session_state.profile = ensure_profile_schema(prof["data"])
-    else:
-        data = default_profile()
-        db_upsert_profile(st.session_state.user["id"], data)
-        st.session_state.profile = data
+if not st.session_state.authed:
+    try_autologin_from_token()
+
+if not st.session_state.authed:
+    auth_screen()
+    st.stop()
 
 profile = st.session_state.profile
 
