@@ -2194,218 +2194,105 @@ import streamlit as st
 
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
-    r = profile["realization"]
-    t = profile["today"]
 
-    st.markdown("## 2) Сегодня — идеальный день")
+    f = profile.get("foundation", {})
+    r = profile.get("realization", {})
+    prog = profile.setdefault("progress", {})
+    days = prog.setdefault("days", {})
 
     today_key = date.today().isoformat()
-    t.setdefault("by_date", {})
-    day = t["by_date"].setdefault(today_key, {
-        "actions": {},
-        "hobby_personal": "",
-        "hobby_individual": "",
-        "hobby_collective": "",
-        "recovery": "",
-        "game_goal": ""
-    })
+    day = days.setdefault(today_key, {})
+    day.setdefault("resources", {})
+    res = day["resources"]
 
-    focuses = (r.get("focuses") or {})
-    all_actions = []
+    st.markdown("## Сегодня")
+    st.caption("День фиксирует действия и ресурс. Хобби подтягиваются из вкладки «Хобби» (постоянные настройки).")
 
-    # Собираем ТОЛЬКО действия (без названий фокусов)
-    for fk in ["focus1", "focus2", "focus3"]:
-        blk = focuses.get(fk) or {}
-        for i, a in enumerate(blk.get("actions") or [], start=1):
-            a = (a or "").strip()
-            if a:
-                # стабильный id (чтобы одинаковые тексты не конфликтовали)
-                action_id = f"{fk}:{i}:{a}"
-                all_actions.append((action_id, a))
-
-    if not all_actions:
-        st.info("Сначала заполните фокусы во вкладке «Реализация».")
-        return
-
-    st.caption("Отметьте 3–5 действий на день. Это и есть ваш «идеальный день» — без перегруза.")
-
-    # чеклисты (показываем только текст действия)
-    for action_id, label in all_actions:
-        # ключ для Streamlit (короткий и уникальный)
-        h = hashlib.md5(action_id.encode("utf-8")).hexdigest()[:10]
-        cb_key = f"today_{today_key}_{h}"
-
-        done = bool(day["actions"].get(action_id, False))
-        new_val = st.checkbox(label, value=done, key=cb_key)
-        day["actions"][action_id] = new_val
-
-    # если ты где-то сохраняешь профиль кнопкой — оставь как есть
-    # (или добавь кнопку сохранения тут, если хочешь)
-
-    st.write("")
-    st.subheader("🌿 Ресурс на сегодня (из 2 ряда)")
-    # --- options: гарантированно определены
-  
-    # --- текущие сохранённые хобби пользователя (постоянные настройки)
-    # будем хранить в r["hobbies_selected"] как список строк
-    saved = r.get("hobbies_selected", []) or []
-
-    # helper: вытянуть сохранённое значение из списка по префиксу
-    def _get_saved(prefix: str) -> str:
-        for x in saved:
-            if isinstance(x, str) and x.startswith(prefix):
-                return x
-        return ""
-
-    # helper: сохранить/заменить значение по префиксу в saved
-    def _set_saved(prefix: str, value: str):
-        nonlocal saved
-        saved = [x for x in saved if not (isinstance(x, str) and x.startswith(prefix))]
-        if value:
-            saved.append(value)
-
-    # --- options (подставь свои списки, если они у тебя уже собраны выше)
-    # если нет — сделай пустые списки, чтобы не падало
-        # =========================
-    # 🌿 Ресурс на сегодня (из 2 ряда) — options НЕ из session_state, а из профиля/канона
+    # =========================
+    # 🌿 Ресурс на сегодня (из 2 ряда) — из r["hobbies_selected"]
     # =========================
     st.subheader("🌿 Ресурс на сегодня (из 2 ряда)")
 
-    # 1) Матрица нужна, чтобы понимать потенциалы позиций 4/5/6
-    if not (profile.get("foundation", {}).get("potentials_table") or "").strip():
-        st.info("Сначала заполните потенциалы во вкладке «0) Основа».")
-        return
+    saved = (r.get("hobbies_selected") or [])
+    saved = [x for x in saved if isinstance(x, str) and x.strip()]
 
-    p9 = parse_potentials_9(profile["foundation"]["potentials_table"])
-    pos4 = (p9[3] or "").strip() if len(p9) > 3 else ""
-    pos5 = (p9[4] or "").strip() if len(p9) > 4 else ""
-    pos6 = (p9[5] or "").strip() if len(p9) > 5 else ""
+    # Если в «Хобби» ещё ничего не выбрано
+    if not saved:
+        st.info("Сначала выберите хобби во вкладке «Хобби», чтобы они подтянулись сюда.")
+    else:
+        def _uniq(lst: list[str]) -> list[str]:
+            out, seen = [], set()
+            for x in lst:
+                k = x.lower().strip()
+                if k and k not in seen:
+                    out.append(x.strip()); seen.add(k)
+            return out
 
-    # 2) Подсказки из канона
-    # pos4: личные хобби
-    d4 = (POT_4_CANON or {}).get(pos4) or {}
-    solo_opts = [str(x).strip() for x in (d4.get("hobby") or []) if str(x).strip()]
+        def _opts_by_prefix(prefix: str) -> list[str]:
+            # saved хранит строки вида:
+            # "Личное (позиция 4): ...", "Восстановление: ...", "Индивидуальное (позиция 5): ...", ...
+            opts = [x.strip() for x in saved if x.startswith(prefix)]
+            return _uniq(opts)
 
-    # pos6: коллективные
-    d6 = (POT_6_CANON or {}).get(pos6) or {}
-    col_opts = [str(x).strip() for x in (d6.get("collective_hobby") or []) if str(x).strip()]
+        solo_opts = _opts_by_prefix("Личное (позиция 4): ")
+        rec_opts  = _opts_by_prefix("Восстановление: ")
+        ind_opts  = _opts_by_prefix("Индивидуальное (позиция 5): ")
+        col_opts  = _opts_by_prefix("Коллективное (позиция 6): ")
+        game_opts = _opts_by_prefix("Игра: ")
 
-    # 3) pos5 и восстановление/игра — если у тебя пока нет канона, берём из сохранённых пользователем списков (если есть)
-    #    (эти ключи ты можешь заполнять во вкладке "Хобби")
-    pack = (profile.get("realization", {}).get("hobbies_pack") or {})
-    rec_opts  = [str(x).strip() for x in (pack.get("restore") or []) if str(x).strip()]
-    ind_opts  = [str(x).strip() for x in (pack.get("individual") or []) if str(x).strip()]  # позиция 5
-    game_opts = [str(x).strip() for x in (pack.get("game") or []) if str(x).strip()]        # игровая цель
+        def pick(label: str, opts: list[str], key_name: str):
+            options = ["(не выбрано)"] + (opts or [])
+            cur = res.get(key_name, "")
+            idx = options.index(cur) if cur in options else 0
+            chosen = st.selectbox(
+                label,
+                options=options,
+                index=idx,
+                key=f"today_{today_key}_{key_name}",  # уникально по дате
+            )
+            res[key_name] = "" if chosen == "(не выбрано)" else chosen
 
-    # 4) Уникальность
-    def uniq(lst):
-        out, seen = [], set()
-        for x in lst:
-            k = x.lower()
-            if k not in seen:
-                out.append(x); seen.add(k)
-        return out
+        pick("🧘 Личное (позиция 4)", solo_opts, "pos4")
+        pick("🌿 Восстановление канала", rec_opts, "restore")
+        pick("🎭 Индивидуальное (позиция 5)", ind_opts, "pos5")
+        pick("👥 Коллективное (позиция 6)", col_opts, "pos6")
+        pick("🎯 Игровая цель (мотивация)", game_opts, "game")
 
-    solo_opts = uniq(solo_opts)
-    col_opts  = uniq(col_opts)
-    rec_opts  = uniq(rec_opts)
-    ind_opts  = uniq(ind_opts)
-    game_opts = uniq(game_opts)
+    # =========================
+    # ✅ Действия на сегодня (простая фиксация)
+    # =========================
+    st.subheader("✅ Действия на сегодня")
 
-    # 5) Сохранённый выбор на дату
-    day.setdefault("resources", {})  # чтобы не падало на старых профилях
-    res = day["resources"]
+    day.setdefault("actions_done", [])
+    actions_done = day["actions_done"]
 
-    def pick(label, opts, key, icon):
-        options = ["(не выбрано)"] + [f"{label}: {x}" for x in opts]
-        cur = res.get(key, "")
-        idx = 0
-        if cur and cur in options:
-            idx = options.index(cur)
-        chosen = st.selectbox(
-            f"{icon} {label}",
-            options=options,
-            index=idx,
-            key=f"today_{today_key}_{key}"
-        )
-        res[key] = "" if chosen == "(не выбрано)" else chosen
+    # 3 строки (можешь поменять на multiselect/checkboxes — это самый стабильный вариант)
+    a1 = st.text_input("1) Главное действие", value=(actions_done[0] if len(actions_done) > 0 else ""), key=f"a1_{today_key}")
+    a2 = st.text_input("2) Второе действие", value=(actions_done[1] if len(actions_done) > 1 else ""), key=f"a2_{today_key}")
+    a3 = st.text_input("3) Третье действие", value=(actions_done[2] if len(actions_done) > 2 else ""), key=f"a3_{today_key}")
 
-    pick("Личное (позиция 4)", solo_opts, "pos4", "🧘")
-    pick("Восстановление канала", rec_opts, "restore", "🌿")
-    pick("Индивидуальное (позиция 5)", ind_opts, "pos5", "🎭")
-    pick("Коллективное (позиция 6)", col_opts, "pos6", "👥")
-    pick("Игровая цель (мотивация)", game_opts, "game", "🎯")
-    # чтобы не падало при пустом каноне
-    def _opts_with_none(opts: list[str]) -> list[str]:
-        return ["(не выбрано)"] + (opts or [])
-    # --- options: гарантированно определены
+    # сохраняем в day (без пустых строк)
+    actions_done = [x.strip() for x in [a1, a2, a3] if isinstance(x, str) and x.strip()]
+    day["actions_done"] = actions_done
 
-    # --- 4 селекта ресурсов + игровой мотиватор
-    solo_choice = st.selectbox(
-        "🧘 Личное (позиция 4)",
-        options=_opts_with_none(solo_opts),
-        index=(_opts_with_none(solo_opts).index(_get_saved("Личное: ")) if _get_saved("Личное: ") in _opts_with_none(solo_opts) else 0),
-        key=f"today_solo_{today_key}",
-    )
+    # =========================
+    # 📝 Итог дня
+    # =========================
+    st.subheader("📝 Итог дня")
+    day["notes"] = st.text_area("Коротко: что получилось / что мешало / что важно завтра",
+                                value=day.get("notes", ""),
+                                height=120,
+                                key=f"notes_{today_key}")
 
-    rec_choice = st.selectbox(
-        "🌿 Восстановление канала",
-        options=_opts_with_none(rec_opts),
-        index=(_opts_with_none(rec_opts).index(_get_saved("Восстановление: ")) if _get_saved("Восстановление: ") in _opts_with_none(rec_opts) else 0),
-        key=f"today_rec_{today_key}",
-    )
-
-    ind_choice = st.selectbox(
-        "🎭 Индивидуальное (позиция 5)",
-        options=_opts_with_none(ind_opts),
-        index=(_opts_with_none(ind_opts).index(_get_saved("Индивидуальное: ")) if _get_saved("Индивидуальное: ") in _opts_with_none(ind_opts) else 0),
-        key=f"today_ind_{today_key}",
-    )
-
-    col_choice = st.selectbox(
-        "👥 Коллективное (позиция 6)",
-        options=_opts_with_none(col_opts),
-        index=(_opts_with_none(col_opts).index(_get_saved("Коллективное: ")) if _get_saved("Коллективное: ") in _opts_with_none(col_opts) else 0),
-        key=f"today_col_{today_key}",
-    )
-
-    game_choice = st.selectbox(
-        "🎯 Игровая цель (мотивация)",
-        options=_opts_with_none(game_opts),
-        index=(_opts_with_none(game_opts).index(_get_saved("Игра: ")) if _get_saved("Игра: ") in _opts_with_none(game_opts) else 0),
-        key=f"today_game_{today_key}",
-    )
-
-    st.write("")
-
-    # --- КНОПКА 1: сохранить как настройки (постоянно)
-    if st.button("💾 Сохранить хобби", use_container_width=True):
-        r["hobbies_selected"] = selected
-
-        # если у тебя уже есть отдельные списки по категориям — сохрани их сюда
-        r.setdefault("hobbies_pack", {})
-        # Примеры (подставь свои переменные/виджеты, если они у тебя уже есть):
-        # r["hobbies_pack"]["restore"] = restore_selected
-        # r["hobbies_pack"]["individual"] = pos5_selected
-        # r["hobbies_pack"]["game"] = game_selected
-
+    # =========================
+    # 💾 Сохранение
+    # =========================
+    if st.button("💾 Сохранить день", use_container_width=True, key=f"save_today_{today_key}"):
         st.session_state.profile = profile
         save_profile_state()
         st.success("Сохранено ✅")
 
-    # --- КНОПКА 2: сохранить выбор на конкретный день (дневник)
-    if st.button("💾 Сохранить день", use_container_width=True, key=f"save_day_{today_key}"):
-        day["hobby"] = {
-            "solo": "" if solo_choice == "(не выбрано)" else solo_choice,
-            "recovery": "" if rec_choice == "(не выбрано)" else rec_choice,
-            "individual": "" if ind_choice == "(не выбрано)" else ind_choice,
-            "collective": "" if col_choice == "(не выбрано)" else col_choice,
-            "game": "" if game_choice == "(не выбрано)" else game_choice,
-        }
-        t["by_date"][today_key] = day
-        st.session_state.profile = profile
-        save_profile_state()
-        st.success("День сохранён ✅")
+    return profile
 
 def progress_tab(profile: dict):
     profile = ensure_profile_schema(profile)
