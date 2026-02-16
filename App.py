@@ -13,6 +13,45 @@ from typing import Any, Dict, List, Optional, Tuple
 import streamlit as st
 from supabase import create_client
 
+import base64
+import hmac
+import time
+
+# ✅ секрет для подписи токена (добавь в Streamlit secrets лучше)
+SESSION_SECRET = st.secrets.get("SESSION_SECRET", os.getenv("SESSION_SECRET", "CHANGE_ME_PLEASE"))
+
+def make_session_token(user_id: str, ttl_days: int = 14) -> str:
+    """
+    Подписанный токен формата: base64(user_id|exp|sig)
+    exp = unix timestamp
+    """
+    exp = int(time.time()) + int(ttl_days) * 24 * 60 * 60
+    payload = f"{user_id}|{exp}".encode("utf-8")
+    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    raw = f"{user_id}|{exp}|{sig}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("utf-8")
+
+def verify_session_token(token: str) -> str | None:
+    """
+    Возвращает user_id если токен валиден, иначе None
+    """
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        user_id, exp_str, sig = raw.split("|", 2)
+        exp = int(exp_str)
+
+        if time.time() > exp:
+            return None
+
+        payload = f"{user_id}|{exp}".encode("utf-8")
+        expected = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            return None
+
+        return user_id
+    except Exception:
+        return None
+
 # OpenAI optional
 try:
     from openai import OpenAI
@@ -1425,6 +1464,26 @@ def init_state():
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("profile", None)
 
+# --- auto-login via token (remember me) ---
+if not st.session_state.get("authed"):
+    tok = st.query_params.get("token")
+    if tok:
+        uid = verify_session_token(tok)
+        if uid:
+            # грузим юзера и профиль
+            u = sb.table(USERS_TABLE).select("*").eq("id", uid).limit(1).execute().data
+            u = (u or [None])[0]
+            if u:
+                st.session_state.authed = True
+                st.session_state.user = u
+
+                prof = db_get_profile(u["id"])
+                if not prof:
+                    data = default_profile()
+                    db_upsert_profile(u["id"], data)
+                    st.session_state.profile = data
+                else:
+                    st.session_state.profile = ensure_profile_schema(prof["data"])
 
 def save_profile_state():
     if not st.session_state.get("authed") or not st.session_state.get("user") or not st.session_state.get("profile"):
@@ -2352,7 +2411,7 @@ def settings_tab():
         st.session_state.user = None
         st.session_state.profile = None
         st.rerun()
-
+    st.query_params.clear()
 
 # =========================
 # MAIN
