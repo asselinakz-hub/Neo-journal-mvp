@@ -2192,6 +2192,8 @@ from datetime import date
 import hashlib
 import streamlit as st
 import datetime as dt
+from datetime import date
+today_key = date.today().isoformat()
 
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
