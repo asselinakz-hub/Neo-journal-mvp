@@ -1439,17 +1439,15 @@ def header_bar():
 
 def auth_screen():
     st.title(APP_TITLE)
-    st.caption("Платформа навигации по реализации через потенциалы")
+    st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
 
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
-        with st.form("login_form", clear_on_submit=False):
+        with st.form("auth_login_form_v2", clear_on_submit=False):
             email = st.text_input("Email", key="login_email")
             pw = st.text_input("Пароль", type="password", key="login_pw")
-
             remember = st.checkbox("Запомнить меня на 14 дней", value=True, key="login_remember")
-
             ok = st.form_submit_button("Войти", use_container_width=True)
 
         if ok:
@@ -1472,7 +1470,7 @@ def auth_screen():
             else:
                 st.session_state.profile = ensure_profile_schema(prof["data"])
 
-            # ✅ remember-me: кладём токен в URL
+            # remember-me token в URL (если функции есть)
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
                 if token:
@@ -1483,7 +1481,7 @@ def auth_screen():
             st.rerun()
 
     with tab_signup:
-        with st.form("signup_form", clear_on_submit=False):
+        with st.form("auth_signup_form_v2", clear_on_submit=False):
             email2 = st.text_input("Email (для доступа)", key="su_email")
             pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
             pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
@@ -1492,42 +1490,21 @@ def auth_screen():
         if ok2:
             if not email2 or "@" not in email2:
                 st.error("Введи корректный email.")
-            elif len(pw2) < 8:
+                return
+            if len(pw2) < 8:
                 st.error("Пароль минимум 8 символов.")
-            elif pw2 != pw3:
+                return
+            if pw2 != pw3:
                 st.error("Пароли не совпадают.")
-            elif db_get_user_by_email(email2):
+                return
+            if db_get_user_by_email(email2):
                 st.error("Такой email уже зарегистрирован.")
-            else:
-                u2 = db_create_user(email2, pw2)
+                return
 
-                data = default_profile()
-                db_upsert_profile(u2["id"], data)
-
-                st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
-
-    with tab_signup:
-        with st.form("signup_form", clear_on_submit=False):
-            email2 = st.text_input("Email (для доступа)", key="su_email")
-            pw2 = st.text_input("Пароль (минимум 8 символов)", type="password", key="su_pw")
-            pw3 = st.text_input("Повтори пароль", type="password", key="su_pw2")
-            ok2 = st.form_submit_button("Создать доступ", use_container_width=True)
-
-        if ok2:
-            if not email2 or "@" not in email2:
-                st.error("Введи корректный email.")
-            elif len(pw2) < 8:
-                st.error("Пароль минимум 8 символов.")
-            elif pw2 != pw3:
-                st.error("Пароли не совпадают.")
-            elif db_get_user_by_email(email2):
-                st.error("Такой email уже зарегистрирован.")
-            else:
-                u = db_create_user(email2, pw2)
-                data = default_profile()
-                db_upsert_profile(u["id"], data)
-                st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
-
+            u2 = db_create_user(email2, pw2)
+            data = default_profile()
+            db_upsert_profile(u2["id"], data)
+            st.success("Готово ✅ Теперь зайди во вкладку «Войти».")
 
 def foundation_tab(profile: dict):
     profile = ensure_profile_schema(profile)
