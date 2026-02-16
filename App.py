@@ -1521,12 +1521,10 @@ def auth_screen():
     st.caption("Платформа навигации по реализации через потенциалы.")
 
     # DEBUG: покажет есть ли токен в URL (можно потом убрать)
-    qp = _get_qp()
-    tok = qp.get("token")  # строка или None
-    if isinstance(tok_dbg, list):
-        tok_dbg = tok_dbg[0] if tok_dbg else None
-    st.caption(f"DEBUG token in URL: {'YES' if tok_dbg else 'NO'}")
+    qp = dict(st.query_params)
+    tok_dbg = qp.get("token")  # строка или None
 
+    st.caption(f"DEBUG token in URL: {'YES' if tok_dbg else 'NO'}")
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
