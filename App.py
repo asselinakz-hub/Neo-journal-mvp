@@ -1494,20 +1494,27 @@ def save_profile_state():
 def header_bar():
     st.markdown(f"# {APP_TITLE}")
     st.write("")
-
+    
 def _get_qp() -> dict:
-    return st.experimental_get_query_params() or {}
+    # QueryParams ведёт себя как dict[str, str]
+    return dict(st.query_params)
 
 def _set_qp(**kwargs):
-    qp = {}
+    # ставим/удаляем ключи
     for k, v in kwargs.items():
-        if v is None:
-            continue
-        qp[k] = str(v)
-    st.experimental_set_query_params(**qp)
+        if v is None or v == "":
+            if k in st.query_params:
+                del st.query_params[k]
+        else:
+            st.query_params[k] = str(v)
 
-def _clear_qp():
-    st.experimental_set_query_params()
+def _clear_qp(*keys):
+    if not keys:
+        st.query_params.clear()
+        return
+    for k in keys:
+        if k in st.query_params:
+            del st.query_params[k]
     
 def auth_screen():
     st.title(APP_TITLE)
@@ -1515,7 +1522,7 @@ def auth_screen():
 
     # DEBUG: покажет есть ли токен в URL (можно потом убрать)
     qp = _get_qp()
-    tok_dbg = qp.get("token")
+    tok = qp.get("token")  # строка или None
     if isinstance(tok_dbg, list):
         tok_dbg = tok_dbg[0] if tok_dbg else None
     st.caption(f"DEBUG token in URL: {'YES' if tok_dbg else 'NO'}")
@@ -1554,6 +1561,7 @@ def auth_screen():
                 _set_qp(token=token)
                 st.success("Token written to URL ✅")
                 st.rerun()
+                st.caption(f"DEBUG token in URL: {'YES' if tok else 'NO'}")
                 
                 
                 
