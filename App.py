@@ -2188,98 +2188,62 @@ def realization_tab(profile: dict):
         save_profile_state()
         st.success("Фокусы сохранены ✅")
         
-from datetime import date
 import hashlib
-import streamlit as st
-import datetime as dt
 from datetime import date
-today_key = date.today().isoformat()
 
 def today_tab(profile: dict):
     profile = ensure_profile_schema(profile)
-    f = profile.get("foundation", {})
-    r = profile.get("realization", {})
+    f = profile.get("foundation", {}) or {}
+    r = profile.get("realization", {}) or {}
+    t = profile.get("today", {}) or {}
 
-    st.markdown("## Сегодня")
-    st.caption("День фиксирует фокус, действия и ресурс. Хобби/ресурсы подтягиваются из вкладки «Хобби» и/или канона.")
+    st.markdown("## 2) Сегодня — идеальный день")
 
-    # ----------------------------
-    # 0) DAY STORAGE (на сегодня)
-    # ----------------------------
-    today_key = _dt.date.today().isoformat()
+    # ---------- дата ----------
+    today_key = date.today().isoformat()
 
-    # Где хранится день: r["days"][today_key]
-    days = r.get("days", {}) or {}
-    day = days.get(today_key) or {}
-    day.setdefault("resources", {})   # сюда пишем выбор ресурса
-    day.setdefault("actions_done", [])  # на будущее
-    days[today_key] = day
-    r["days"] = days
-    profile["realization"] = r
+    # ---------- storage today ----------
+    t.setdefault("by_date", {})
+    day = t["by_date"].setdefault(today_key, {"actions": {}, "resources": {}, "hobby": ""})
+    profile["today"] = t
 
-    # ----------------------------
-    # 1) ФОКУС НА СЕГОДНЯ
-    # ----------------------------
-    st.markdown("### 🎯 Фокус на сегодня")
+    # =========================================================
+    # 1) ДЕЙСТВИЯ (без названий фокусов, как ты хотела)
+    # =========================================================
+    focuses = (r.get("focuses") or {})
+    all_actions = []
 
-    focuses = r.get("focuses", []) or []  # ожидаем список dict: {"id","title","actions":[...]} или {"title","actions":[...]}
+    # собираем ТОЛЬКО действия из 3 фокусов
+    for fk in ["focus1", "focus2", "focus3"]:
+        blk = focuses.get(fk) or {}
+        acts = blk.get("actions") or []
+        for i, a in enumerate(acts, start=1):
+            a = (a or "").strip()
+            if a:
+                action_id = f"{fk}:{i}:{a}"
+                all_actions.append((action_id, a))
 
-    if not focuses:
-        st.info("Фокусы не найдены. Сначала сгенерируйте/сохраните 3 фокуса во вкладке «Реализация».")
-    else:
-        # нормализуем в список опций
-        focus_options = []
-        id_map = {}  # label -> focus_id
-        for i, fx in enumerate(focuses):
-            fx_id = fx.get("id") or f"fx_{i+1}"
-            title = (fx.get("title") or fx.get("name") or f"Фокус {i+1}").strip()
-            label = f"{i+1}. {title}"
-            focus_options.append(label)
-            id_map[label] = fx_id
+    if not all_actions:
+        st.info("Фокусы не найдены. Сначала заполните фокусы во вкладке «Реализация».")
+        return
 
-        # текущий выбранный фокус дня
-        cur_focus_id = day.get("focus_id", "")
-        # найдём индекс по id
-        idx = 0
-        if cur_focus_id:
-            for j, fx in enumerate(focuses):
-                fx_id = fx.get("id") or f"fx_{j+1}"
-                if fx_id == cur_focus_id:
-                    idx = j
-                    break
+    st.caption("Отметьте 3–5 действий на день. Это и есть ваш «идеальный день» — без перегруза.")
 
-        chosen_label = st.selectbox(
-            "Выберите фокус",
-            options=focus_options,
-            index=idx,
-            key=f"today_focus_{today_key}",
-        )
+    for action_id, label in all_actions:
+        h = hashlib.md5(action_id.encode("utf-8")).hexdigest()[:10]
+        cb_key = f"today_{today_key}_{h}"
 
-        day["focus_id"] = id_map.get(chosen_label, "")
-
-        # показать действия выбранного фокуса (если есть)
-        selected_fx = None
-        for j, fx in enumerate(focuses):
-            fx_id = fx.get("id") or f"fx_{j+1}"
-            if fx_id == day["focus_id"]:
-                selected_fx = fx
-                break
-
-        if selected_fx:
-            actions = selected_fx.get("actions") or selected_fx.get("steps") or []
-            if actions:
-                st.caption("Действия по фокусу:")
-                for k, a in enumerate(actions[:5], start=1):
-                    st.write(f"{k}) {a}")
-            else:
-                st.caption("У этого фокуса пока нет действий (actions).")
+        done = bool(day["actions"].get(action_id, False))
+        new_val = st.checkbox(label, value=done, key=cb_key)
+        day["actions"][action_id] = new_val
 
     st.divider()
 
-    # ----------------------------
-    # 2) РЕСУРС НА СЕГОДНЯ (2 ряд)
-    # ----------------------------
-    st.markdown("### 🌿 Ресурс на сегодня (из 2 ряда)")
+    # =========================================================
+    # 2) РЕСУРС / ХОББИ НА СЕГОДНЯ (позиции 4/5/6 + restore + game)
+    # Хранится в day["resources"]
+    # =========================================================
+    st.subheader("🌿 Ресурс на сегодня (из 2 ряда)")
 
     if not (f.get("potentials_table") or "").strip():
         st.info("Сначала заполните потенциалы во вкладке «0) Основа».")
@@ -2290,22 +2254,19 @@ def today_tab(profile: dict):
         pos5 = (p9[4] or "").strip() if len(p9) > 4 else ""
         pos6 = (p9[5] or "").strip() if len(p9) > 5 else ""
 
-        # Канон pos4
+        # pos4: личные хобби из канона
         d4 = (POT_4_CANON or {}).get(pos4) or {}
         solo_opts = [str(x).strip() for x in (d4.get("hobby") or []) if str(x).strip()]
 
-        # Канон pos6
+        # pos6: коллективные из канона
         d6 = (POT_6_CANON or {}).get(pos6) or {}
         col_opts = [str(x).strip() for x in (d6.get("collective_hobby") or []) if str(x).strip()]
 
-        # pos5 + восстановление + игра — из pack (вкладка "Хобби")
+        # pos5/restore/game из hobbies_pack (заполняется во вкладке "Хобби")
         pack = (r.get("hobbies_pack") or {})
         rec_opts  = [str(x).strip() for x in (pack.get("restore") or []) if str(x).strip()]
         ind_opts  = [str(x).strip() for x in (pack.get("individual") or []) if str(x).strip()]  # позиция 5
         game_opts = [str(x).strip() for x in (pack.get("game") or []) if str(x).strip()]
-
-        # Если хочешь, чтобы pos5 подхватывался из канона тоже — позже добавим POT_5_CANON
-        # Пока берём из hobbies_pack.
 
         def uniq(lst):
             out, seen = [], set()
@@ -2321,7 +2282,7 @@ def today_tab(profile: dict):
         ind_opts  = uniq(ind_opts)
         game_opts = uniq(game_opts)
 
-        res = day["resources"]
+        res = day.setdefault("resources", {})
 
         def pick(label, opts, key, icon):
             options = ["(не выбрано)"] + [f"{label}: {x}" for x in (opts or [])]
@@ -2342,6 +2303,20 @@ def today_tab(profile: dict):
         pick("Игровая цель (мотивация)", game_opts, "game", "🎯")
 
     st.divider()
+
+    # =========================================================
+    # 3) Сохранение
+    # =========================================================
+    if st.button("💾 Сохранить день", use_container_width=True, key=f"today_save_{today_key}"):
+        t["by_date"][today_key] = day
+        profile["today"] = t
+        st.session_state.profile = profile
+        save_profile_state()
+        st.success("Сохранено ✅")
+
+    done_cnt = sum(1 for v in (day["actions"] or {}).values() if v)
+    total_cnt = len(day["actions"] or {})
+    st.write(f"✅ Выполнено сегодня: **{done_cnt}/{total_cnt}**")
 
     # ----------------------------
     # 3) Сохранение дня
