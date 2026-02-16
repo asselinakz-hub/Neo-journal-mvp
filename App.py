@@ -1496,28 +1496,19 @@ def header_bar():
     st.write("")
 
 def _get_qp() -> dict:
-    try:
-        return dict(st.query_params)
-    except Exception:
-        return st.experimental_get_query_params()
+    return st.experimental_get_query_params() or {}
 
 def _set_qp(**kwargs):
-    try:
-        st.query_params.clear()
-        for k, v in kwargs.items():
-            if v is None:
-                continue
-            st.query_params[k] = str(v)
-    except Exception:
-        qp = {k: [str(v)] for k, v in kwargs.items() if v is not None}
-        st.experimental_set_query_params(**qp)
+    qp = {}
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        qp[k] = str(v)
+    st.experimental_set_query_params(**qp)
 
 def _clear_qp():
-    try:
-        st.query_params.clear()
-    except Exception:
-        st.experimental_set_query_params()
-
+    st.experimental_set_query_params()
+    
 def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы.")
@@ -1561,6 +1552,11 @@ def auth_screen():
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
                 _set_qp(token=token)
+                st.success("Token written to URL ✅")
+                st.rerun()
+                
+                
+                
             else:
                 _clear_qp()
 
@@ -2449,7 +2445,7 @@ init_state()
 # --- auto-login via token ---
 if not st.session_state.get("authed"):
     qp = _get_qp()
-    tok = qp.get("token")
+    tok = (qp.get("token") or [None])[0]
     if isinstance(tok, list):
         tok = tok[0] if tok else None
 
