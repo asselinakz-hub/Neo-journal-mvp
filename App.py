@@ -14,8 +14,15 @@ st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
 # =========================
 # Secrets (after set_page_config)
 # =========================
-SUPABASE_URL = st.secrets.get("SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_SECRET_KEY")
+SUPABASE_URL = st.secrets.get("SUPABASE_URL") or st.secrets.get("SUPABASE_PROJECT_URL")
+
+SUPABASE_KEY = (
+    st.secrets.get("SUPABASE_SECRET_KEY")
+    or st.secrets.get("SUPABASE_KEY")
+    or st.secrets.get("SUPABASE_ANON_KEY")
+    or st.secrets.get("SUPABASE_SERVICE_ROLE_KEY")
+)х
+
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 SESSION_SECRET = st.secrets.get("SESSION_SECRET")  # ОБЯЗАТЕЛЬНО задай в secrets
 
@@ -23,7 +30,7 @@ USERS_TABLE = "pp_users"
 PROFILES_TABLE = "pp_profiles"
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Missing SUPABASE_URL or SUPABASE_SECRET_KEY in secrets.")
+    st.error("Missing SUPABASE_URL or SUPABASE_*KEY in secrets.")
     st.stop()
 
 if not SESSION_SECRET:
