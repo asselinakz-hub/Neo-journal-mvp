@@ -1497,25 +1497,6 @@ def init_state():
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("profile", None)
 # --- auto-login via token (remember me) ---
-if not st.session_state.get("authed"):
-    tok = st.query_params.get("token")
-    if tok:
-        uid = verify_session_token(tok)
-        if uid:
-            # грузим юзера и профиль
-            u = sb.table(USERS_TABLE).select("*").eq("id", uid).limit(1).execute().data
-            u = (u or [None])[0]
-            if u:
-                st.session_state.authed = True
-                st.session_state.user = u
-
-                prof = db_get_profile(u["id"])
-                if not prof:
-                    data = default_profile()
-                    db_upsert_profile(u["id"], data)
-                    st.session_state.profile = data
-                else:
-                    st.session_state.profile = ensure_profile_schema(prof["data"])
 
 def save_profile_state():
     if not st.session_state.get("authed") or not st.session_state.get("user") or not st.session_state.get("profile"):
@@ -2441,17 +2422,19 @@ def settings_tab():
 # =========================
 init_state()
 
+# =========================
+# MAIN (single clean flow)
+# =========================
+init_state()
+
 # --- auto-login via token (single place) ---
-# --- auto-login via token (single place)
 if not st.session_state.get("authed"):
     tok = st.query_params.get("token")
     if tok:
         uid = verify_session_token(tok)
-
         if uid:
             r = sb.table(USERS_TABLE).select("*").eq("id", uid).execute()
             u = (r.data or [None])[0]
-
             if u:
                 st.session_state.authed = True
                 st.session_state.user = u
@@ -2464,14 +2447,11 @@ if not st.session_state.get("authed"):
                 else:
                     st.session_state.profile = prof
         else:
-            # токен битый/истёк — удаляем и перезагружаем
+            # токен битый/истёк — просто убираем его из URL (БЕЗ rerun)
             st.query_params.pop("token", None)
-            st.rerun()
-    # ВАЖНО: если uid None — НЕ трогаем URL, чтобы видеть токен и дебажить
-# if not authed -> login screen
+
+# если не залогинен — показываем логин и СТОП
 if not st.session_state.get("authed"):
-    st.query_params.pop("token", None)
-    st.rerun()
     auth_screen()
     st.stop()
 
