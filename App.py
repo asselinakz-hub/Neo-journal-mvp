@@ -48,17 +48,6 @@ def verify_session_token(token: str) -> str | None:
     except Exception:
         return None
 
-# =========================
-# PAGE CONFIG (MUST BE FIRST Streamlit call!)
-# =========================
-
-APP_TITLE = st.secrets.get("APP_BRAND_TITLE") or st.secrets.get("APP_TITLE") or "Personal Potentials"
-
-st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon="💠",
-    layout="wide",
-)
 
 # =========================
 # OpenAI optional (AFTER set_page_config)
