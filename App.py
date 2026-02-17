@@ -61,15 +61,14 @@ def qp_set_token(token: Optional[str]) -> None:
         else:
             st.experimental_set_query_params()
 
-    def get_openai_client():
+def get_openai_client():
+    if not OPENAI_API_KEY:
+        return None
+
     try:
-        if not OPENAI_API_KEY:
-            return None
-    try:
-        from openai import OpenAI  # импорт прямо здесь
+        from openai import OpenAI
         return OpenAI(api_key=OPENAI_API_KEY)
     except Exception as e:
-        # На проде можно убрать или сделать st.caption
         st.warning(f"OpenAI disabled: {e}")
         return None
 
