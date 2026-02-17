@@ -69,6 +69,20 @@ def qp_set_token(token: Optional[str]) -> None:
         else:
             st.experimental_set_query_params()
 
+
+def get_openai_client():
+    # Если ключа нет — просто отключаем AI, но НЕ падаем
+    if not OPENAI_API_KEY:
+        return None
+
+    try:
+        from openai import OpenAI  # импорт прямо здесь
+        return OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        # На проде можно убрать или сделать st.caption
+        st.warning(f"OpenAI disabled: {e}")
+        return None
+
 # =========================
 # Remember-me token helpers (robust base64)
 # =========================
@@ -1572,10 +1586,10 @@ def auth_screen():
 
             # remember-me: write token to URL (only if checkbox)
             if remember:
-                token = make_session_token(u["id"], ttl_days=14)
-                qp_set_token(token)
+                token = make_session_token(u["id"])
+                st.query_params["token"] = token
             else:
-                qp_set_token(None)
+                st.query_params.pop("token", None)
 
             st.rerun()
     
@@ -1620,10 +1634,10 @@ def foundation_tab(profile: dict):
     st.subheader("🧠 Расширенный отчёт (ИИ)")
 
     client = get_openai_client()
-    if not client:
-        st.warning("OpenAI не настроен (нет ключа) — генерация отчёта недоступна.")
+    if client is None:
+        st.info("AI-функции временно выключены (нет OPENAI_API_KEY или ошибка импорта).")
+        # не делаем AI-запросы, но страницу показываем
         return
-
     model = st.selectbox("Модель", ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"], index=0)
 
     gen = st.button("Сгенерировать расширенный отчёт", use_container_width=True)
@@ -2174,7 +2188,7 @@ def realization_tab(profile: dict):
     
     with cols[1]:
         gen_focus = st.button(
-            "✨ Сгенерировать 3 фокуса (скелет + душа)",
+            "✨ Сгенерировать 3 фокуса",
             use_container_width=True,
             key="real_gen_focus"  # ✅ ключ
         )
@@ -2428,13 +2442,16 @@ def settings_tab():
 init_state()
 
 # --- auto-login via token (single place) ---
+# --- auto-login via token (single place)
 if not st.session_state.get("authed"):
-    tok = qp_get("token")
-    if (not st.session_state.get("authed")) and tok:
+    tok = st.query_params.get("token")
+    if tok:
         uid = verify_session_token(tok)
+
         if uid:
             r = sb.table(USERS_TABLE).select("*").eq("id", uid).execute()
             u = (r.data or [None])[0]
+
             if u:
                 st.session_state.authed = True
                 st.session_state.user = u
@@ -2446,9 +2463,15 @@ if not st.session_state.get("authed"):
                     st.session_state.profile = data
                 else:
                     st.session_state.profile = prof
+        else:
+            # токен битый/истёк — удаляем и перезагружаем
+            st.query_params.pop("token", None)
+            st.rerun()
     # ВАЖНО: если uid None — НЕ трогаем URL, чтобы видеть токен и дебажить
 # if not authed -> login screen
 if not st.session_state.get("authed"):
+    st.query_params.pop("token", None)
+    st.rerun()
     auth_screen()
     st.stop()
 
