@@ -1545,9 +1545,9 @@ def auth_screen():
 
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
-                _set_url_token(token)
+                st.experimental_set_query_params(token=token)
             else:
-                _set_url_token(None)
+                st.experimental_set_query_params()
 
             st.rerun()
     
@@ -2392,6 +2392,7 @@ def settings_tab():
         st.session_state.user = None
         st.session_state.profile = None
         _set_url_token(None)
+        st.experimental_set_query_params()
         st.rerun()
 # =========================
 # MAIN (single clean flow)
