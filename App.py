@@ -2411,9 +2411,7 @@ if not st.session_state.get("authed"):
                     st.session_state.profile = data
                 else:
                     st.session_state.profile = prof
-        else:
-            # токен битый/истёк — просто убираем его из URL (БЕЗ rerun)
-
+        
 # если не залогинен — показываем логин и СТОП
 if not st.session_state.get("authed"):
     auth_screen()
