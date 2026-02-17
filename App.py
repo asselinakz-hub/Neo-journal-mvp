@@ -5,75 +5,95 @@ from typing import Any, Dict, List, Optional, Tuple
 import streamlit as st
 from supabase import create_client
 
-# -------------------------
-# set_page_config MUST be first Streamlit call
-# -------------------------
-APP_TITLE = st.secrets.get("APP_BRAND_TITLE", os.getenv("APP_BRAND_TITLE", "Personal Potentials · Реализация"))
+# =========================
+# PAGE CONFIG (MUST BE FIRST Streamlit call)
+# =========================
+APP_TITLE = "Personal Potentials · Реализация"  # <-- без st.secrets здесь!
 st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
 
-# ✅ теперь уже можно любые st.*
-# st.write("DEBUG qp:", dict(st.query_params))  # если нужно — оставь тут
-
-SESSION_SECRET = st.secrets.get("SESSION_SECRET", os.getenv("SESSION_SECRET", "CHANGE_ME_PLEASE"))
-
-def make_session_token(user_id: str, ttl_days: int = 14) -> str:
-    """
-    Подписанный токен формата: base64(user_id|exp|sig)
-    exp = unix timestamp
-    """
-    exp = int(time.time()) + int(ttl_days) * 24 * 60 * 60
-    payload = f"{user_id}|{exp}".encode("utf-8")
-    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-    raw = f"{user_id}|{exp}|{sig}".encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("utf-8")
-
-def verify_session_token(token: str) -> str | None:
-    """
-    Возвращает user_id если токен валиден, иначе None
-    """
-    try:
-        raw = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
-        user_id, exp_str, sig = raw.split("|", 2)
-        exp = int(exp_str)
-
-        if time.time() > exp:
-            return None
-
-        payload = f"{user_id}|{exp}".encode("utf-8")
-        expected = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, sig):
-            return None
-
-        return user_id
-    except Exception:
-        return None
-
-
 # =========================
-# OpenAI optional (AFTER set_page_config)
+# Secrets (after set_page_config)
 # =========================
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-
-# =========================
-# Secrets
-# =========================
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))
-SUPABASE_KEY = st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""))
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_SECRET_KEY")
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
+SESSION_SECRET = st.secrets.get("SESSION_SECRET")  # ОБЯЗАТЕЛЬНО задай в secrets
 
 USERS_TABLE = "pp_users"
 PROFILES_TABLE = "pp_profiles"
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in Streamlit secrets")
+    st.error("Missing SUPABASE_URL or SUPABASE_SECRET_KEY in secrets.")
+    st.stop()
+
+if not SESSION_SECRET:
+    st.error("Missing SESSION_SECRET in secrets. Remember-me token won't work.")
     st.stop()
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# =========================
+# Query params helpers (works on new+old Streamlit)
+# =========================
+def qp_get(key: str) -> Optional[str]:
+    # new API
+    try:
+        v = st.query_params.get(key)
+        if isinstance(v, list):
+            return v[0] if v else None
+        return v
+    except Exception:
+        # old experimental API
+        d = st.experimental_get_query_params()
+        arr = d.get(key)
+        return arr[0] if arr else None
 
+def qp_set_token(token: Optional[str]) -> None:
+    try:
+        # new API
+        if token:
+            st.query_params["token"] = token
+        else:
+            st.query_params.pop("token", None)
+    except Exception:
+        # old experimental API
+        if token:
+            st.experimental_set_query_params(token=token)
+        else:
+            st.experimental_set_query_params()
+
+# =========================
+# Remember-me token helpers (robust base64)
+# =========================
+def _b64url_encode(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode("utf-8").rstrip("=")
+
+def _b64url_decode(s: str) -> bytes:
+    s = (s or "").strip()
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + pad)
+
+def make_session_token(user_id: str, ttl_days: int = 14) -> str:
+    exp = int(time.time()) + int(ttl_days) * 86400
+    payload = f"{user_id}|{exp}".encode("utf-8")
+    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    raw = f"{user_id}|{exp}|{sig}".encode("utf-8")
+    return _b64url_encode(raw)
+
+def verify_session_token(token: str) -> Optional[str]:
+    try:
+        raw = _b64url_decode(token).decode("utf-8")
+        user_id, exp_str, sig = raw.split("|")
+        exp = int(exp_str)
+        if time.time() > exp:
+            return None
+        payload = f"{user_id}|{exp}".encode("utf-8")
+        expected = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, sig):
+            return None
+        return user_id
+    except Exception:
+        return None
 # =========================
 # Profile defaults
 # =========================
@@ -1543,11 +1563,12 @@ def auth_screen():
 
             # ... внутри if ok: после st.session_state.authed = True ...
 
+            # remember-me: write token to URL (only if checkbox)
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
-                st.experimental_set_query_params(token=token)
+                qp_set_token(token)
             else:
-                st.experimental_set_query_params()
+                qp_set_token(None)
 
             st.rerun()
     
@@ -2401,11 +2422,11 @@ init_state()
 
 # --- auto-login via token (single place) ---
 if not st.session_state.get("authed"):
-    tok = st.query_params.get("token")
-    if tok:
+    tok = qp_get("token")
+    if (not st.session_state.get("authed")) and tok:
         uid = verify_session_token(tok)
         if uid:
-            r = sb.table(USERS_TABLE).select("*").eq("id", uid).limit(1).execute()
+            r = sb.table(USERS_TABLE).select("*").eq("id", uid).execute()
             u = (r.data or [None])[0]
             if u:
                 st.session_state.authed = True
@@ -2417,11 +2438,8 @@ if not st.session_state.get("authed"):
                     db_upsert_profile(u["id"], data)
                     st.session_state.profile = data
                 else:
-                    st.session_state.profile = ensure_profile_schema(prof["data"])
-        else:
-            # token invalid/expired -> remove from URL
-            st.query_params.pop("token", None)
-
+                    st.session_state.profile = prof
+    # ВАЖНО: если uid None — НЕ трогаем URL, чтобы видеть токен и дебажить
 # if not authed -> login screen
 if not st.session_state.get("authed"):
     auth_screen()
