@@ -45,7 +45,6 @@ sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 def qp_get(key: str) -> Optional[str]:
     # new API
     try:
-        v = st.query_params.get(key)
         if isinstance(v, list):
             return v[0] if v else None
         return v
@@ -57,11 +56,6 @@ def qp_get(key: str) -> Optional[str]:
 
 def qp_set_token(token: Optional[str]) -> None:
     try:
-        # new API
-        if token:
-            st.query_params["token"] = token
-        else:
-            st.query_params.pop("token", None)
     except Exception:
         # old experimental API
         if token:
@@ -1513,7 +1507,6 @@ def auth_screen():
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
 
     # DEBUG
-    qp = dict(st.query_params)
     st.caption(f"DEBUG qp keys: {list(qp.keys())}")
     st.caption(f"DEBUG token in URL: {'YES' if qp.get('token') else 'NO'}")
 
@@ -1547,15 +1540,9 @@ def auth_screen():
                 st.session_state.profile = ensure_profile_schema(prof["data"])
 
             # ВАЖНО: пишем токен в URL
-            # ВАЖНО: пишем токен в URL (только через st.query_params, без experimental_*)
+
             def _set_url_token(tok: str | None):
                 try:
-                    if tok:
-                        st.query_params["token"] = tok
-                    else:
-                        # удалить токен из URL
-                        if "token" in st.query_params:
-                            del st.query_params["token"]
                 except Exception:
                     # fallback для старых версий
                     if tok:
@@ -1566,11 +1553,12 @@ def auth_screen():
             # ... внутри if ok: после st.session_state.authed = True ...
 
             # remember-me: write token to URL (only if checkbox)
+            # ✅ remember-me: write token to URL
             if remember:
-                token = make_session_token(u["id"])
-                st.query_params["token"] = token
+                token = make_session_token(u["id"], ttl_days=14)
+                st.experimental_set_query_params(token=token)
             else:
-                st.query_params.pop("token", None)
+                st.experimental_set_query_params()
 
             st.rerun()
     
@@ -2421,7 +2409,8 @@ init_state()
 
 # --- auto-login via token (single place) ---
 if not st.session_state.get("authed"):
-    tok = st.query_params.get("token")
+    qp = st.experimental_get_query_params()
+    tok = (qp.get("token", [None])[0] or "").strip() or None
     if tok:
         uid = verify_session_token(tok)
         if uid:
@@ -2440,7 +2429,6 @@ if not st.session_state.get("authed"):
                     st.session_state.profile = prof
         else:
             # токен битый/истёк — просто убираем его из URL (БЕЗ rerun)
-            st.query_params.pop("token", None)
 
 # если не залогинен — показываем логин и СТОП
 if not st.session_state.get("authed"):
