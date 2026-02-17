@@ -2422,11 +2422,6 @@ def settings_tab():
 # =========================
 init_state()
 
-# =========================
-# MAIN (single clean flow)
-# =========================
-init_state()
-
 # --- auto-login via token (single place) ---
 if not st.session_state.get("authed"):
     tok = st.query_params.get("token")
