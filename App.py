@@ -48,23 +48,25 @@ def verify_session_token(token: str) -> str | None:
     except Exception:
         return None
 
-# OpenAI optional
+# =========================
+# PAGE CONFIG (MUST BE FIRST Streamlit call!)
+# =========================
+
+APP_TITLE = st.secrets.get("APP_BRAND_TITLE") or st.secrets.get("APP_TITLE") or "Personal Potentials"
+
+st.set_page_config(
+    page_title=APP_TITLE,
+    page_icon="💠",
+    layout="wide",
+)
+
+# =========================
+# OpenAI optional (AFTER set_page_config)
+# =========================
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
-
-
-# ---- init auth flags
-if "authed" not in st.session_state:
-    st.session_state.authed = False
-
-# -------------------------
-# MUST be first Streamlit call
-# -------------------------
-APP_TITLE = st.secrets.get("APP_BRAND_TITLE", os.getenv("APP_BRAND_TITLE", "Personal Potentials · Реализация"))
-st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
-
 
 # =========================
 # Secrets
@@ -1460,10 +1462,10 @@ def monday_of_week(d: date) -> date:
 
 def init_state():
     inject_css()
+
     st.session_state.setdefault("authed", False)
     st.session_state.setdefault("user", None)
     st.session_state.setdefault("profile", None)
-
 # --- auto-login via token (remember me) ---
 if not st.session_state.get("authed"):
     tok = st.query_params.get("token")
