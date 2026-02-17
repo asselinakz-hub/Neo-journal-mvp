@@ -11,6 +11,7 @@ from supabase import create_client
 APP_TITLE = "Personal Potentials · Реализация"  # <-- без st.secrets здесь!
 st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
 
+APP_TITLE = st.secrets.get("APP_BRAND_TITLE", APP_TITLE_DEFAULT)
 # =========================
 # Secrets (after set_page_config)
 # =========================
@@ -2259,9 +2260,6 @@ def realization_tab(profile: dict):
         save_profile_state()
         st.success("Фокусы сохранены ✅")
         
-import hashlib
-from datetime import date
-
 import hashlib
 from datetime import date
 
