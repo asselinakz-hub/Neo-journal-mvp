@@ -55,12 +55,11 @@ def qp_get(key: str) -> Optional[str]:
         return arr[0] if arr else None
 
 def qp_set_token(token: Optional[str]) -> None:
-    try:
-        if token:
-            st.experimental_set_query_params(token=token)
-        else:
-            st.experimental_set_query_params()
-
+    if token:
+        st.experimental_set_query_params(token=token)
+    else:
+        st.experimental_set_query_params()
+        
 def get_openai_client():
     if not OPENAI_API_KEY:
         return None
