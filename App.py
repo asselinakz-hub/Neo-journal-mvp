@@ -1,24 +1,19 @@
-# =========================
-#App.py — Personal Potentials · Реализация (clean rebuild)
-# =========================
-
-import os
-import re
-import json
-import hashlib
-import secrets
+import os, re, json, hashlib, secrets, base64, hmac, time
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 from supabase import create_client
 
-import base64
-import hmac
-import time
+# -------------------------
+# set_page_config MUST be first Streamlit call
+# -------------------------
+APP_TITLE = st.secrets.get("APP_BRAND_TITLE", os.getenv("APP_BRAND_TITLE", "Personal Potentials · Реализация"))
+st.set_page_config(page_title=APP_TITLE, page_icon="💠", layout="wide")
 
-st.write("DEBUG qp:", dict(st.query_params)) 
-# ✅ секрет для подписи токена (добавь в Streamlit secrets лучше)
+# ✅ теперь уже можно любые st.*
+# st.write("DEBUG qp:", dict(st.query_params))  # если нужно — оставь тут
+
 SESSION_SECRET = st.secrets.get("SESSION_SECRET", os.getenv("SESSION_SECRET", "CHANGE_ME_PLEASE"))
 
 def make_session_token(user_id: str, ttl_days: int = 14) -> str:
@@ -2043,20 +2038,6 @@ OUTPUT FORMAT: строго JSON, без markdown, без пояснений:
 
 # ---------- 3) UI ВСТАВКА (ЗАМЕНЯЕТ СТАРУЮ ГЕНЕРАЦИЮ) ----------
 
-# Предполагаю, что эти переменные у тебя уже есть из формы:
-# point_a = st.session_state.get("point_a", "") или из st.text_area
-# point_b = st.session_state.get("point_b", "")
-# top_potentials = [...]  # например ["Аметист", "Гранат", "Цитрин"]
-
-# Если у тебя они называются иначе — просто подставь свои имена ниже.
-
-    if "point_a" not in st.session_state:
-        st.session_state.point_a = ""
-    if "point_b" not in st.session_state:
-        st.session_state.point_b = ""
-    if "top_potentials" not in st.session_state:
-        st.session_state.top_potentials = []
-
 
 # Твои поля (если они уже есть — НЕ дублируй, а оставь только блок кнопки ниже)
 # st.session_state.point_a = st.text_area("Точка А (сейчас)", st.session_state.point_a)
@@ -2404,12 +2385,7 @@ def settings_tab():
         st.session_state.profile = None
         st.rerun()
 # =========================
-# MAIN
-# =========================
-init_state()
-
-# =========================
-# MAIN
+# MAIN (single clean flow)
 # =========================
 init_state()
 
@@ -2433,10 +2409,10 @@ if not st.session_state.get("authed"):
                 else:
                     st.session_state.profile = ensure_profile_schema(prof["data"])
         else:
-            # токен битый/просрочен → убираем из URL
+            # token invalid/expired -> remove from URL
             st.query_params.pop("token", None)
 
-# если не залогинен — показываем логин
+# if not authed -> login screen
 if not st.session_state.get("authed"):
     auth_screen()
     st.stop()
@@ -2464,5 +2440,4 @@ with tabs[4]:
 
 with tabs[5]:
     settings_tab()
-    
     
