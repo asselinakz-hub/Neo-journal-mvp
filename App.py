@@ -21,7 +21,7 @@ SUPABASE_KEY = (
     or st.secrets.get("SUPABASE_KEY")
     or st.secrets.get("SUPABASE_ANON_KEY")
     or st.secrets.get("SUPABASE_SERVICE_ROLE_KEY")
-)х
+)
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 SESSION_SECRET = st.secrets.get("SESSION_SECRET")  # ОБЯЗАТЕЛЬНО задай в secrets
