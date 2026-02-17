@@ -873,9 +873,18 @@ POT_HOBBY_CANON = {
 # OpenAI helper
 # =========================
 def get_openai_client():
-    if not OPENAI_API_KEY or not OpenAI:
+    # 1) берем ключ из secrets (или из env, если надо)
+    key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not key:
         return None
-    return OpenAI(api_key=OPENAI_API_KEY)
+
+    # 2) пробуем импортировать OpenAI прямо здесь
+    try:
+        from openai import OpenAI
+        return OpenAI(api_key=key)
+    except Exception as e:
+        st.warning(f"OpenAI disabled: {e}")
+        return None
 
 
 # =========================
