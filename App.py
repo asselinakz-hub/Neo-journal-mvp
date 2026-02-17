@@ -56,8 +56,6 @@ def qp_get(key: str) -> Optional[str]:
 
 def qp_set_token(token: Optional[str]) -> None:
     try:
-    except Exception:
-        # old experimental API
         if token:
             st.experimental_set_query_params(token=token)
         else:
