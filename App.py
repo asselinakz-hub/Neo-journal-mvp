@@ -1535,17 +1535,7 @@ def auth_screen():
 
             # ВАЖНО: пишем токен в URL
 
-            def _set_url_token(tok: str | None):
-                try:
-                except Exception:
-                    # fallback для старых версий
-                    if tok:
-                        st.experimental_set_query_params(token=tok)
-                    else:
-                        st.experimental_set_query_params()
-
-            # ... внутри if ok: после st.session_state.authed = True ...
-
+            
             # remember-me: write token to URL (only if checkbox)
             # ✅ remember-me: write token to URL
             if remember:
