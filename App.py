@@ -61,12 +61,10 @@ def qp_set_token(token: Optional[str]) -> None:
         else:
             st.experimental_set_query_params()
 
-
-def get_openai_client():
-    # Если ключа нет — просто отключаем AI, но НЕ падаем
-    if not OPENAI_API_KEY:
-        return None
-
+    def get_openai_client():
+    try:
+        if not OPENAI_API_KEY:
+            return None
     try:
         from openai import OpenAI  # импорт прямо здесь
         return OpenAI(api_key=OPENAI_API_KEY)
