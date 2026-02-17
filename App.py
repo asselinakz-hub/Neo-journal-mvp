@@ -82,27 +82,7 @@ def _b64url_decode(s: str) -> bytes:
     pad = "=" * (-len(s) % 4)
     return base64.urlsafe_b64decode(s + pad)
 
-def make_session_token(user_id: str, ttl_days: int = 14) -> str:
-    exp = int(time.time()) + int(ttl_days) * 86400
-    payload = f"{user_id}|{exp}".encode("utf-8")
-    sig = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-    raw = f"{user_id}|{exp}|{sig}".encode("utf-8")
-    return _b64url_encode(raw)
 
-def verify_session_token(token: str) -> Optional[str]:
-    try:
-        raw = _b64url_decode(token).decode("utf-8")
-        user_id, exp_str, sig = raw.split("|")
-        exp = int(exp_str)
-        if time.time() > exp:
-            return None
-        payload = f"{user_id}|{exp}".encode("utf-8")
-        expected = hmac.new(SESSION_SECRET.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, sig):
-            return None
-        return user_id
-    except Exception:
-        return None
 # =========================
 # Profile defaults
 # =========================
@@ -1509,17 +1489,12 @@ def auth_screen():
     st.title(APP_TITLE)
     st.caption("Платформа навигации по реализации через потенциалы. Аккуратно, красиво, по делу.")
 
-    # DEBUG
-    st.caption(f"DEBUG qp keys: {list(qp.keys())}")
-    st.caption(f"DEBUG token in URL: {'YES' if qp.get('token') else 'NO'}")
-
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
         with st.form("login_form_v1", clear_on_submit=False):
             email = st.text_input("Email", key="login_email")
             pw = st.text_input("Пароль", type="password", key="login_pw")
-            remember = st.checkbox("Запомнить меня (14 дней)", value=True, key="remember_me")
             ok = st.form_submit_button("Войти", use_container_width=True)
 
         if ok:
@@ -1544,16 +1519,6 @@ def auth_screen():
 
             # ВАЖНО: пишем токен в URL
 
-            
-            # remember-me: write token to URL (only if checkbox)
-            # ✅ remember-me: write token to URL
-            if remember:
-                token = make_session_token(u["id"], ttl_days=14)
-                st.experimental_set_query_params(token=token)
-            else:
-                st.experimental_set_query_params()
-
-            st.rerun()
     
     with tab_signup:
         with st.form("signup_form_v1", clear_on_submit=False):
@@ -2397,31 +2362,8 @@ def settings_tab():
         st.rerun()
 # =========================
 # MAIN (single clean flow)
-# =========================
 init_state()
 
-# --- auto-login via token (single place) ---
-if not st.session_state.get("authed"):
-    qp = st.experimental_get_query_params()
-    tok = (qp.get("token", [None])[0] or "").strip() or None
-    if tok:
-        uid = verify_session_token(tok)
-        if uid:
-            r = sb.table(USERS_TABLE).select("*").eq("id", uid).execute()
-            u = (r.data or [None])[0]
-            if u:
-                st.session_state.authed = True
-                st.session_state.user = u
-
-                prof = db_get_profile(u["id"])
-                if not prof:
-                    data = default_profile()
-                    db_upsert_profile(u["id"], data)
-                    st.session_state.profile = data
-                else:
-                    st.session_state.profile = prof
-        
-# если не залогинен — показываем логин и СТОП
 if not st.session_state.get("authed"):
     auth_screen()
     st.stop()
