@@ -1526,11 +1526,28 @@ def auth_screen():
 
             # ВАЖНО: пишем токен в URL
             # ВАЖНО: пишем токен в URL (только через st.query_params, без experimental_*)
+            def _set_url_token(tok: str | None):
+                try:
+                    if tok:
+                        st.query_params["token"] = tok
+                    else:
+                        # удалить токен из URL
+                        if "token" in st.query_params:
+                            del st.query_params["token"]
+                except Exception:
+                    # fallback для старых версий
+                    if tok:
+                        st.experimental_set_query_params(token=tok)
+                    else:
+                        st.experimental_set_query_params()
+
+            # ... внутри if ok: после st.session_state.authed = True ...
+
             if remember:
                 token = make_session_token(u["id"], ttl_days=14)
-                st.query_params.update({"token": token})
+                _set_url_token(token)
             else:
-                st.query_params.pop("token", None)
+                _set_url_token(None)
 
             st.rerun()
     
@@ -2374,6 +2391,7 @@ def settings_tab():
         st.session_state.authed = False
         st.session_state.user = None
         st.session_state.profile = None
+        _set_url_token(None)
         st.rerun()
 # =========================
 # MAIN (single clean flow)
