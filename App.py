@@ -43,17 +43,17 @@ sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Query params helpers (works on new+old Streamlit)
 # =========================
 def qp_get(key: str) -> Optional[str]:
-    # new API
     try:
+        d = st.query_params
+        v = d.get(key)
         if isinstance(v, list):
             return v[0] if v else None
         return v
     except Exception:
-        # old experimental API
         d = st.experimental_get_query_params()
         arr = d.get(key)
         return arr[0] if arr else None
-
+        
 def qp_set_token(token: Optional[str]) -> None:
     if token:
         st.experimental_set_query_params(token=token)
@@ -1521,10 +1521,35 @@ def auth_screen():
 
     
     with tab_signup:
-        with st.form("signup_form_v1", clear_on_submit=False):
-            st.info("Тут оставь свой текущий signup-код (главное: ключ формы уникальный).")
-            st.form_submit_button("Создать", use_container_width=True)
+    with st.form("signup_form_v1", clear_on_submit=False):
+        email = st.text_input("Email", key="signup_email")
+        pw = st.text_input("Пароль", type="password", key="signup_pw")
+        pw2 = st.text_input("Повтори пароль", type="password", key="signup_pw2")
+        ok = st.form_submit_button("Создать доступ", use_container_width=True)
 
+    if ok:
+        email_clean = (email or "").strip().lower()
+        if not email_clean or "@" not in email_clean:
+            st.error("Введите корректный email.")
+        elif not pw or len(pw) < 6:
+            st.error("Пароль минимум 6 символов.")
+        elif pw != pw2:
+            st.error("Пароли не совпадают.")
+        elif db_get_user_by_email(email_clean):
+            st.error("Пользователь уже существует. Войдите во вкладке «Войти».")
+        else:
+            u = db_create_user(email_clean, pw)
+
+            st.session_state.authed = True
+            st.session_state.user = u
+
+            data = default_profile()
+            db_upsert_profile(u["id"], data)
+            st.session_state.profile = data
+
+            st.success("Аккаунт создан ✅")
+            st.rerun()
+            
 def foundation_tab(profile: dict):
     profile = ensure_profile_schema(profile)
     f = profile["foundation"]
@@ -2357,7 +2382,7 @@ def settings_tab():
         st.session_state.authed = False
         st.session_state.user = None
         st.session_state.profile = None
-        _set_url_token(None)
+        qp_set_token(None)
         st.experimental_set_query_params()
         st.rerun()
 # =========================
