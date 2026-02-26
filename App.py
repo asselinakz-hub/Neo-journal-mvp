@@ -1521,34 +1521,34 @@ def auth_screen():
 
     
     with tab_signup:
-    with st.form("signup_form_v1", clear_on_submit=False):
-        email = st.text_input("Email", key="signup_email")
-        pw = st.text_input("Пароль", type="password", key="signup_pw")
-        pw2 = st.text_input("Повтори пароль", type="password", key="signup_pw2")
-        ok = st.form_submit_button("Создать доступ", use_container_width=True)
+        with st.form("signup_form_v1", clear_on_submit=False):
+            email = st.text_input("Email", key="signup_email")
+            pw = st.text_input("Пароль", type="password", key="signup_pw")
+            pw2 = st.text_input("Повтори пароль", type="password", key="signup_pw2")
+            ok = st.form_submit_button("Создать доступ", use_container_width=True)
 
-    if ok:
-        email_clean = (email or "").strip().lower()
-        if not email_clean or "@" not in email_clean:
-            st.error("Введите корректный email.")
-        elif not pw or len(pw) < 6:
-            st.error("Пароль минимум 6 символов.")
-        elif pw != pw2:
-            st.error("Пароли не совпадают.")
-        elif db_get_user_by_email(email_clean):
-            st.error("Пользователь уже существует. Войдите во вкладке «Войти».")
-        else:
-            u = db_create_user(email_clean, pw)
+        if ok:
+            email_clean = (email or "").strip().lower()
+            if not email_clean or "@" not in email_clean:
+                st.error("Введите корректный email.")
+            elif not pw or len(pw) < 6:
+                st.error("Пароль минимум 6 символов.")
+            elif pw != pw2:
+                st.error("Пароли не совпадают.")
+            elif db_get_user_by_email(email_clean):
+                st.error("Пользователь уже существует. Войдите во вкладке «Войти».")
+            else:
+                u = db_create_user(email_clean, pw)
 
-            st.session_state.authed = True
-            st.session_state.user = u
+                st.session_state.authed = True
+                st.session_state.user = u
 
-            data = default_profile()
-            db_upsert_profile(u["id"], data)
-            st.session_state.profile = data
+                data = default_profile()
+                db_upsert_profile(u["id"], data)
+                st.session_state.profile = data
 
-            st.success("Аккаунт создан ✅")
-            st.rerun()
+                st.success("Аккаунт создан ✅")
+                st.rerun()
             
 def foundation_tab(profile: dict):
     profile = ensure_profile_schema(profile)
