@@ -1492,35 +1492,40 @@ def auth_screen():
     tab_login, tab_signup = st.tabs(["Войти", "Создать доступ"])
 
     with tab_login:
+        msg = st.empty()  # фиксированное место под сообщения
+
         with st.form("login_form_v1", clear_on_submit=False):
             email = st.text_input("Email", key="login_email")
             pw = st.text_input("Пароль", type="password", key="login_pw")
             ok = st.form_submit_button("Войти", use_container_width=True)
 
         if ok:
-            u = db_get_user_by_email(email)
-            if not u:
-                st.error("Пользователь не найден.")
-                return
-            if not verify_password(pw, u["salt"], u["pw_hash"]):
-                st.error("Неверный пароль.")
-                return
-
-            st.session_state.authed = True
-            st.session_state.user = u
-
-            prof = db_get_profile(u["id"])
-            if not prof:
-                data = default_profile()
-                db_upsert_profile(u["id"], data)
-                st.session_state.profile = data
+            email_clean = (email or "").strip().lower()
+            if not email_clean or "@" not in email_clean:
+                msg.error("Введите корректный email.")
             else:
-                st.session_state.profile = ensure_profile_schema(prof["data"])
+                u = db_get_user_by_email(email_clean)
+                if not u:
+                    msg.error("Пользователь не найден.")
+                elif not verify_password(pw, u["salt"], u["pw_hash"]):
+                    msg.error("Неверный пароль.")
+                else:
+                    st.session_state.authed = True
+                    st.session_state.user = u
 
-            # ВАЖНО: пишем токен в URL
+                    prof = db_get_profile(u["id"])
+                    if not prof:
+                        data = default_profile()
+                        db_upsert_profile(u["id"], data)
+                        st.session_state.profile = data
+                    else:
+                        st.session_state.profile = ensure_profile_schema(prof["data"])
 
-    
+                    st.rerun()
+
     with tab_signup:
+        msg = st.empty()  # фиксированное место под сообщения
+
         with st.form("signup_form_v1", clear_on_submit=False):
             email = st.text_input("Email", key="signup_email")
             pw = st.text_input("Пароль", type="password", key="signup_pw")
@@ -1530,13 +1535,13 @@ def auth_screen():
         if ok:
             email_clean = (email or "").strip().lower()
             if not email_clean or "@" not in email_clean:
-                st.error("Введите корректный email.")
+                msg.error("Введите корректный email.")
             elif not pw or len(pw) < 6:
-                st.error("Пароль минимум 6 символов.")
+                msg.error("Пароль минимум 6 символов.")
             elif pw != pw2:
-                st.error("Пароли не совпадают.")
+                msg.error("Пароли не совпадают.")
             elif db_get_user_by_email(email_clean):
-                st.error("Пользователь уже существует. Войдите во вкладке «Войти».")
+                msg.error("Пользователь уже существует. Войдите во вкладке «Войти».")
             else:
                 u = db_create_user(email_clean, pw)
 
@@ -1547,7 +1552,6 @@ def auth_screen():
                 db_upsert_profile(u["id"], data)
                 st.session_state.profile = data
 
-                st.success("Аккаунт создан ✅")
                 st.rerun()
             
 def foundation_tab(profile: dict):
